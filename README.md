@@ -64,4 +64,3 @@ CREATE DATABASE resource_sharing_forum DEFAULT CHARACTER SET utf8mb4 COLLATE utf
   "traceId": "request-trace-id"
 }
 ```
-
