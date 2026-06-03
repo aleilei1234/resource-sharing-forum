@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.vite/
+.cache/
+coverage/
+test-results/
+playwright-report/
+dev-server-run.log
+vite-dev.log
+vite-dev.err
