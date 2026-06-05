@@ -5,7 +5,9 @@ public enum ResourceStatus {
     PENDING_REVIEW,
     PUBLISHED,
     REJECTED,
+    REVIEWING_RISK,
     OFFLINE,
+    COPYRIGHT_DOWN,
     DELETED
 }
 

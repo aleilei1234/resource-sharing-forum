@@ -44,19 +44,22 @@ public class DesignSpecForumService {
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
     private final PasswordEncoder passwordEncoder;
+    private final NotificationService notificationService;
 
     public DesignSpecForumService(
             ObjectProvider<JdbcTemplate> jdbcProvider,
             ObjectProvider<PlatformTransactionManager> transactionManagerProvider,
             JwtService jwtService,
             JwtProperties jwtProperties,
-            PasswordEncoder passwordEncoder
+            PasswordEncoder passwordEncoder,
+            NotificationService notificationService
     ) {
         this.jdbcProvider = jdbcProvider;
         this.transactionManagerProvider = transactionManagerProvider;
         this.jwtService = jwtService;
         this.jwtProperties = jwtProperties;
         this.passwordEncoder = passwordEncoder;
+        this.notificationService = notificationService;
     }
 
     public Map<String, Object> login(Map<String, Object> request) {
@@ -246,6 +249,63 @@ public class DesignSpecForumService {
         return userProfile(accountId);
     }
 
+    public Map<String, Object> requestResetPasswordCode(Map<String, Object> request) {
+        JdbcTemplate jdbc = jdbc();
+        String account = firstNonBlank(value(request, "account", ""), value(request, "email", ""));
+        if (jdbc == null) {
+            return map("ok", true, "devCode", "000000");
+        }
+        Map<String, Object> row = jdbc.queryForObject("""
+                SELECT id, email
+                FROM user_account
+                WHERE (username = ? OR email = ?) AND deleted_at IS NULL
+                """, (rs, rowNum) -> map("id", rs.getLong("id"), "email", rs.getString("email")), account, account);
+        String code = "000000";
+        jdbc.update("""
+                INSERT INTO email_verification_code(account_id, email, scene, code_hash, status, expire_time)
+                VALUES (?, ?, 'RESET_PASSWORD', ?, 'UNUSED', DATE_ADD(NOW(3), INTERVAL 10 MINUTE))
+                """, row.get("id"), row.get("email"), passwordEncoder.encode(code));
+        return map("ok", true, "email", row.get("email"), "devCode", code, "expiresInMinutes", 10);
+    }
+
+    public Map<String, Object> resetPassword(Map<String, Object> request) {
+        JdbcTemplate jdbc = jdbc();
+        String account = firstNonBlank(value(request, "account", ""), value(request, "email", ""));
+        String code = value(request, "code", "");
+        String password = firstNonBlank(value(request, "newPassword", ""), value(request, "password", ""));
+        if (password.length() < 6) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "新密码长度至少 6 位");
+        }
+        if (jdbc == null) {
+            return map("ok", true);
+        }
+        return inTransaction(() -> {
+            Map<String, Object> row = jdbc.queryForObject("""
+                    SELECT id, email
+                    FROM user_account
+                    WHERE (username = ? OR email = ?) AND deleted_at IS NULL
+                    FOR UPDATE
+                    """, (rs, rowNum) -> map("id", rs.getLong("id"), "email", rs.getString("email")), account, account);
+            List<Map<String, Object>> codes = jdbc.query("""
+                    SELECT id, code_hash
+                    FROM email_verification_code
+                    WHERE account_id = ? AND scene = 'RESET_PASSWORD' AND status = 'UNUSED' AND expire_time > NOW(3)
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """, (rs, rowNum) -> map("id", rs.getLong("id"), "hash", rs.getString("code_hash")), row.get("id"));
+            if (codes.isEmpty() || !passwordEncoder.matches(code, String.valueOf(codes.get(0).get("hash")))) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "验证码错误或已过期");
+            }
+            jdbc.update("UPDATE email_verification_code SET status = 'USED', used_time = NOW(3) WHERE id = ?", codes.get(0).get("id"));
+            jdbc.update("""
+                    UPDATE user_account
+                    SET password_hash = ?, password_changed_time = NOW(3), failed_login_count = 0, locked_until = NULL, status = IF(status = 'LOCKED', 'NORMAL', status)
+                    WHERE id = ?
+                    """, passwordEncoder.encode(password), row.get("id"));
+            return map("ok", true, "email", row.get("email"));
+        });
+    }
+
     public PageResult<Map<String, Object>> listResources(Map<String, String> params, Long accountId) {
         JdbcTemplate jdbc = jdbc();
         int page = page(params);
@@ -312,13 +372,15 @@ public class DesignSpecForumService {
             String summary = firstNonBlank(value(request, "summary", ""), value(request, "description", ""), "资源简介");
             String detail = firstNonBlank(value(request, "detail", ""), value(request, "description", ""), "资源详情");
             String type = resourceType(firstNonBlank(value(request, "resourceType", ""), value(request, "type", "DOCUMENT")));
+            boolean draft = Boolean.parseBoolean(value(request, "draft", "false")) || "DRAFT".equalsIgnoreCase(value(request, "status", ""));
+            String initialStatus = draft ? "DRAFT" : "PENDING_REVIEW";
             KeyHolder resourceKey = new GeneratedKeyHolder();
             jdbc.update(connection -> {
                 PreparedStatement statement = connection.prepareStatement("""
                         INSERT INTO resource_info(
                             publisher_id, category_id, title, resource_type, summary, description,
                             external_url, status, submitted_time
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING_REVIEW', NOW(3))
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, IF(? = 'PENDING_REVIEW', NOW(3), NULL))
                         """, Statement.RETURN_GENERATED_KEYS);
                 statement.setLong(1, memberId);
                 statement.setLong(2, categoryId);
@@ -327,6 +389,8 @@ public class DesignSpecForumService {
                 statement.setString(5, summary);
                 statement.setString(6, detail);
                 statement.setString(7, blankToNull(value(request, "externalUrl", "")));
+                statement.setString(8, initialStatus);
+                statement.setString(9, initialStatus);
                 return statement;
             }, resourceKey);
             Long resourceId = key(resourceKey);
@@ -338,8 +402,8 @@ public class DesignSpecForumService {
                     """, resourceId, title, summary, detail, categoryId, type, memberId);
             jdbc.update("""
                     INSERT INTO resource_status_log(resource_id, from_status, to_status, operator_id, reason)
-                    VALUES (?, NULL, 'PENDING_REVIEW', ?, '用户提交资源审核')
-                    """, resourceId, accountId);
+                    VALUES (?, NULL, ?, ?, ?)
+                    """, resourceId, initialStatus, accountId, draft ? "保存资源草稿" : "用户提交资源审核");
             return resource(resourceId, accountId);
         });
     }
@@ -356,12 +420,33 @@ public class DesignSpecForumService {
         if (jdbc == null) {
             return;
         }
-        Long memberId = memberId(accountId);
-        jdbc.update("""
-                UPDATE resource_info
-                SET status = 'DELETED', deleted_at = NOW(3)
-                WHERE id = ? AND publisher_id = ? AND deleted_at IS NULL
-                """, resourceId, memberId);
+        inTransaction(() -> {
+            Map<String, Object> before = jdbc.queryForObject("""
+                    SELECT r.status, r.publisher_id, ua.role
+                    FROM resource_info r
+                    JOIN user_account ua ON ua.id = ?
+                    WHERE r.id = ? AND r.deleted_at IS NULL
+                    FOR UPDATE
+                    """, (rs, rowNum) -> map(
+                    "status", rs.getString("status"),
+                    "publisherId", rs.getLong("publisher_id"),
+                    "role", rs.getString("role")
+            ), accountId, resourceId);
+            Long memberId = memberId(accountId);
+            boolean admin = List.of("ADMIN", "SUPER_ADMIN", "AUDITOR").contains(String.valueOf(before.get("role")));
+            if (!admin && !Objects.equals(number(before.get("publisherId"), 0L), memberId)) {
+                throw new BusinessException(ErrorCode.FORBIDDEN, "无权删除该资源");
+            }
+            jdbc.update("UPDATE resource_info SET status = 'DELETED', deleted_at = NOW(3) WHERE id = ?", resourceId);
+            jdbc.update("""
+                    INSERT INTO resource_status_log(resource_id, from_status, to_status, operator_id, reason)
+                    VALUES (?, ?, 'DELETED', ?, ?)
+                    """, resourceId, before.get("status"), accountId, admin ? "管理员删除资源" : "发布者删除资源");
+            if (admin) {
+                adminLog(adminProfileId(accountId), "RESOURCE_DELETED", "RESOURCE", resourceId, String.valueOf(before.get("status")), "DELETED");
+            }
+            return null;
+        });
     }
 
     public Map<String, Object> auditResource(Long resourceId, Long adminAccountId, Map<String, Object> request) {
@@ -369,9 +454,16 @@ public class DesignSpecForumService {
         if (jdbc == null) {
             return map("id", resourceId, "status", "PUBLISHED", "auditResult", "APPROVED");
         }
+        String action = value(request, "action", value(request, "auditResult", "APPROVE")).toUpperCase();
+        if ("APPROVE".equals(action) || "APPROVED".equals(action)) {
+            return transitionResourceByAdmin(resourceId, adminAccountId, "APPROVE", request);
+        }
+        if ("REJECT".equals(action) || "REJECTED".equals(action)) {
+            return transitionResourceByAdmin(resourceId, adminAccountId, "REJECT", request);
+        }
         return inTransaction(() -> {
-            String action = value(request, "action", value(request, "auditResult", "APPROVE")).toUpperCase();
-            boolean approved = "APPROVE".equals(action) || "APPROVED".equals(action);
+            String auditAction = value(request, "action", value(request, "auditResult", "APPROVE")).toUpperCase();
+            boolean approved = "APPROVE".equals(auditAction) || "APPROVED".equals(auditAction);
             String after = approved ? "PUBLISHED" : "REJECTED";
             String auditResult = approved ? "APPROVED" : "REJECTED";
             String reason = firstNonBlank(value(request, "reason", ""), approved ? "审核通过" : "审核驳回");
@@ -394,6 +486,143 @@ public class DesignSpecForumService {
                     """, resourceId, before.get("status"), after, adminAccountId, reason);
             adminLog(adminProfileId, "RESOURCE_AUDIT", "RESOURCE", resourceId, String.valueOf(before.get("status")), after);
             return resource(resourceId, adminAccountId);
+        });
+    }
+
+    public PageResult<Map<String, Object>> adminListResources(Map<String, String> params, Long adminAccountId) {
+        JdbcTemplate jdbc = jdbc();
+        int page = page(params);
+        int size = size(params);
+        if (jdbc == null) {
+            return new PageResult<>(0, List.of(), page, size);
+        }
+        String status = firstNonBlank(params.get("status"), params.get("resourceStatus"));
+        String keyword = blankToNull(params.get("keyword"));
+        StringBuilder where = new StringBuilder("WHERE r.deleted_at IS NULL");
+        List<Object> args = new ArrayList<>();
+        if (!status.isBlank()) {
+            where.append(" AND r.status = ?");
+            args.add(status);
+        }
+        if (keyword != null) {
+            where.append(" AND (r.title LIKE ? OR r.summary LIKE ?)");
+            args.add("%" + keyword + "%");
+            args.add("%" + keyword + "%");
+        }
+        long total = jdbc.queryForObject("SELECT COUNT(*) FROM resource_info r " + where, Long.class, args.toArray());
+        args.add((page - 1) * size);
+        args.add(size);
+        List<Map<String, Object>> list = jdbc.query("""
+                SELECT r.*, mp.nickname AS author_name,
+                       c2.id AS category2_id, c2.category_name AS category2_name,
+                       c1.id AS category1_id, c1.category_name AS category1_name
+                FROM resource_info r
+                JOIN member_profile mp ON mp.id = r.publisher_id
+                LEFT JOIN resource_category c2 ON c2.id = r.category_id
+                LEFT JOIN resource_category c1 ON c1.id = c2.parent_id
+                %s
+                ORDER BY r.update_time DESC, r.id DESC
+                LIMIT ?, ?
+                """.formatted(where), resourceMapper(adminAccountId), args.toArray());
+        return new PageResult<>(total, list, page, size);
+    }
+
+    public Map<String, Object> transitionResourceByAdmin(Long resourceId, Long adminAccountId, String action, Map<String, Object> request) {
+        JdbcTemplate jdbc = jdbc();
+        if (jdbc == null) {
+            return map("id", resourceId, "status", "PUBLISHED");
+        }
+        return inTransaction(() -> {
+            String normalized = firstNonBlank(action, value(request, "action", "")).toUpperCase();
+            Map<String, Object> before = jdbc.queryForObject("""
+                    SELECT id, publisher_id, status, current_version_no, title
+                    FROM resource_info
+                    WHERE id = ? AND deleted_at IS NULL
+                    FOR UPDATE
+                    """, (rs, rowNum) -> map(
+                    "id", rs.getLong("id"),
+                    "publisherId", rs.getLong("publisher_id"),
+                    "status", rs.getString("status"),
+                    "version", rs.getInt("current_version_no"),
+                    "title", rs.getString("title")
+            ), resourceId);
+            String from = String.valueOf(before.get("status"));
+            String to = targetResourceStatus(normalized, from);
+            String auditResult = auditResultForAction(normalized, to);
+            String reason = firstNonBlank(value(request, "reason", ""), defaultResourceReason(normalized));
+            validateResourceTransition(from, to);
+            jdbc.update("""
+                    UPDATE resource_info
+                    SET status = ?,
+                        published_time = IF(? = 'PUBLISHED', COALESCE(published_time, NOW(3)), published_time),
+                        offline_time = IF(? IN ('OFFLINE', 'COPYRIGHT_DOWN'), NOW(3), offline_time),
+                        reject_reason = IF(? = 'REJECTED', ?, reject_reason),
+                        deleted_at = IF(? = 'DELETED', NOW(3), deleted_at)
+                    WHERE id = ?
+                    """, to, to, to, to, reason, to, resourceId);
+            Long adminProfileId = adminProfileId(adminAccountId);
+            jdbc.update("""
+                    INSERT INTO resource_audit_record(resource_id, version_no, auditor_id, audit_result, reason)
+                    VALUES (?, ?, ?, ?, ?)
+                    """, resourceId, number(before.get("version"), 1L), adminProfileId, auditResult, reason);
+            jdbc.update("""
+                    INSERT INTO resource_status_log(resource_id, from_status, to_status, operator_id, reason)
+                    VALUES (?, ?, ?, ?, ?)
+                    """, resourceId, from, to, adminAccountId, reason);
+            adminLog(adminProfileId, "RESOURCE_" + auditResult, "RESOURCE", resourceId, from, to);
+            notifyMember(number(before.get("publisherId"), 0L), "RESOURCE_STATUS", "资源状态更新",
+                    "资源《" + before.get("title") + "》状态已变更为 " + to + "，原因：" + reason, "RESOURCE", resourceId);
+            return resource(resourceId, adminAccountId);
+        });
+    }
+
+    public Map<String, Object> submitResource(Long resourceId, Long accountId) {
+        JdbcTemplate jdbc = jdbc();
+        if (jdbc == null) {
+            return resource(resourceId, accountId);
+        }
+        return inTransaction(() -> {
+            Long memberId = memberId(accountId);
+            Map<String, Object> before = jdbc.queryForObject("""
+                    SELECT status FROM resource_info
+                    WHERE id = ? AND publisher_id = ? AND deleted_at IS NULL
+                    FOR UPDATE
+                    """, (rs, rowNum) -> map("status", rs.getString("status")), resourceId, memberId);
+            String from = String.valueOf(before.get("status"));
+            if (!List.of("DRAFT", "REJECTED").contains(from)) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "当前资源状态不能提交审核");
+            }
+            jdbc.update("UPDATE resource_info SET status = 'PENDING_REVIEW', submitted_time = NOW(3) WHERE id = ?", resourceId);
+            jdbc.update("""
+                    INSERT INTO resource_status_log(resource_id, from_status, to_status, operator_id, reason)
+                    VALUES (?, ?, 'PENDING_REVIEW', ?, '发布者提交审核')
+                    """, resourceId, from, accountId);
+            return resource(resourceId, accountId);
+        });
+    }
+
+    public Map<String, Object> withdrawResource(Long resourceId, Long accountId, Map<String, Object> request) {
+        JdbcTemplate jdbc = jdbc();
+        if (jdbc == null) {
+            return resource(resourceId, accountId);
+        }
+        return inTransaction(() -> {
+            Long memberId = memberId(accountId);
+            Map<String, Object> before = jdbc.queryForObject("""
+                    SELECT status FROM resource_info
+                    WHERE id = ? AND publisher_id = ? AND deleted_at IS NULL
+                    FOR UPDATE
+                    """, (rs, rowNum) -> map("status", rs.getString("status")), resourceId, memberId);
+            if (!"PENDING_REVIEW".equals(before.get("status"))) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "只有待审核资源可以撤回修改");
+            }
+            String reason = firstNonBlank(value(request, "reason", ""), "发布者撤回修改");
+            jdbc.update("UPDATE resource_info SET status = 'DRAFT' WHERE id = ?", resourceId);
+            jdbc.update("""
+                    INSERT INTO resource_status_log(resource_id, from_status, to_status, operator_id, reason)
+                    VALUES (?, 'PENDING_REVIEW', 'DRAFT', ?, ?)
+                    """, resourceId, accountId, reason);
+            return resource(resourceId, accountId);
         });
     }
 
@@ -675,6 +904,7 @@ public class DesignSpecForumService {
                 return statement;
             }, keyHolder);
             jdbc.update("UPDATE request_post SET answer_count = answer_count + 1 WHERE id = ?", requestId);
+            notifyMember(number(post.get("requesterId"), 0L), "REQUEST_REPLY", "求资源收到新回答", "你的求资源帖子收到一条新回答", "REQUEST_POST", requestId);
             return reply(key(keyHolder));
         });
     }
@@ -707,6 +937,7 @@ public class DesignSpecForumService {
                     INSERT INTO request_status_log(request_id, from_status, to_status, operator_id, reason)
                     VALUES (?, 'ONGOING', 'RESOLVED', ?, '采纳回答并结算悬赏')
                     """, requestId, accountId);
+            notifyMember(number(reply.get("replierId"), 0L), "REQUEST_ACCEPTED", "你的回答已被采纳", "求资源回答已被采纳，悬赏积分已结算", "REQUEST_POST", requestId);
             return requestPost(requestId);
         });
     }
@@ -1236,6 +1467,7 @@ public class DesignSpecForumService {
             String before = String.valueOf(account.get("status"));
             jdbc.update("UPDATE user_account SET status = ? WHERE id = ?", status, number(account.get("accountId"), 0L));
             adminLog(adminProfileId(adminAccountId), "MEMBER_" + status, "MEMBER", memberId, before, status);
+            notifyMember(memberId, "MEMBER_STATUS", "账号状态更新", "你的账号状态已变更为 " + status + "，原因：" + reason, "MEMBER", memberId);
             return map("id", memberId, "accountId", account.get("accountId"), "status", status, "reason", reason);
         });
     }
@@ -1323,9 +1555,17 @@ public class DesignSpecForumService {
             jdbc.update("UPDATE comment_info SET root_id = ? WHERE id = ?", rootId, commentId);
             if ("RESOURCE".equals(targetType)) {
                 jdbc.update("UPDATE resource_info SET comment_count = comment_count + 1 WHERE id = ?", targetId);
+                Long receiver = jdbc.queryForObject("SELECT publisher_id FROM resource_info WHERE id = ?", Long.class, targetId);
+                if (!Objects.equals(receiver, memberId)) {
+                    notifyMember(receiver, "COMMENT", "资源收到新评论", "你的资源收到一条新评论", "RESOURCE", targetId);
+                }
             }
             if ("REQUEST_POST".equals(targetType)) {
                 jdbc.update("UPDATE request_post SET comment_count = comment_count + 1 WHERE id = ?", targetId);
+                Long receiver = jdbc.queryForObject("SELECT requester_id FROM request_post WHERE id = ?", Long.class, targetId);
+                if (!Objects.equals(receiver, memberId)) {
+                    notifyMember(receiver, "COMMENT", "求资源收到新评论", "你的求资源帖子收到一条新评论", "REQUEST_POST", targetId);
+                }
             }
             return comment(commentId, accountId);
         });
@@ -1736,6 +1976,72 @@ public class DesignSpecForumService {
                 INSERT INTO admin_operation_log(admin_id, operation_type, target_type, target_id, content, before_snapshot, after_snapshot)
                 VALUES (?, ?, ?, ?, ?, JSON_OBJECT('status', ?), JSON_OBJECT('status', ?))
                 """, adminProfileId, operationType, targetType, targetId, operationType, before, after);
+    }
+
+    private void notifyMember(Long memberId, String type, String title, String content, String targetType, Long targetId) {
+        try {
+            notificationService.createForMember(memberId, type, title, content, targetType, targetId);
+        } catch (RuntimeException ignored) {
+            JdbcTemplate jdbc = jdbc();
+            if (jdbc != null) {
+                jdbc.update("""
+                        INSERT INTO notification_event(event_type, source_type, source_id, receiver_id, payload, status, fail_reason, process_time)
+                        VALUES (?, ?, ?, ?, JSON_OBJECT('title', ?, 'content', ?), 'FAILED', '通知写入失败', NOW(3))
+                        """, type, targetType, targetId, memberId, title, content);
+            }
+        }
+    }
+
+    private static String targetResourceStatus(String action, String from) {
+        return switch (firstNonBlank(action)) {
+            case "APPROVE", "APPROVED", "RESTORE", "RESTORED", "RISK_CLEAR", "COPYRIGHT_CLEAR" -> "PUBLISHED";
+            case "REJECT", "REJECTED" -> "REJECTED";
+            case "RISK", "RISK_REVIEW", "REVIEWING_RISK" -> "REVIEWING_RISK";
+            case "OFFLINE" -> "OFFLINE";
+            case "COPYRIGHT", "COPYRIGHT_DOWN" -> "COPYRIGHT_DOWN";
+            case "DELETE", "DELETED" -> "DELETED";
+            default -> throw new BusinessException(ErrorCode.BAD_REQUEST, "不支持的资源状态操作: " + action + " from " + from);
+        };
+    }
+
+    private static String auditResultForAction(String action, String targetStatus) {
+        return switch (targetStatus) {
+            case "PUBLISHED" -> "PUBLISHED".equals(action) || "APPROVE".equals(action) || "APPROVED".equals(action) ? "APPROVED" : "RESTORED";
+            case "REJECTED" -> "REJECTED";
+            case "REVIEWING_RISK" -> "RISK_REVIEW";
+            case "COPYRIGHT_DOWN" -> "COPYRIGHT_DOWN";
+            case "DELETED" -> "DELETED";
+            default -> "OFFLINE";
+        };
+    }
+
+    private static String defaultResourceReason(String action) {
+        return switch (firstNonBlank(action)) {
+            case "APPROVE", "APPROVED" -> "审核通过";
+            case "REJECT", "REJECTED" -> "审核驳回";
+            case "RISK", "RISK_REVIEW", "REVIEWING_RISK" -> "进入风险核查";
+            case "COPYRIGHT", "COPYRIGHT_DOWN" -> "版权投诉处理下架";
+            case "RESTORE", "RESTORED", "RISK_CLEAR", "COPYRIGHT_CLEAR" -> "核查通过恢复发布";
+            case "DELETE", "DELETED" -> "管理员删除资源";
+            default -> "管理员下架资源";
+        };
+    }
+
+    private static void validateResourceTransition(String from, String to) {
+        if (Objects.equals(from, to)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "资源已经处于目标状态");
+        }
+        boolean allowed = switch (to) {
+            case "PUBLISHED" -> List.of("PENDING_REVIEW", "REJECTED", "OFFLINE", "COPYRIGHT_DOWN", "REVIEWING_RISK").contains(from);
+            case "REJECTED" -> List.of("PENDING_REVIEW", "REVIEWING_RISK").contains(from);
+            case "REVIEWING_RISK" -> "PUBLISHED".equals(from);
+            case "OFFLINE", "COPYRIGHT_DOWN" -> List.of("PUBLISHED", "REVIEWING_RISK").contains(from);
+            case "DELETED" -> !"DELETED".equals(from);
+            default -> false;
+        };
+        if (!allowed) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "非法资源状态迁移: " + from + " -> " + to);
+        }
     }
 
     private boolean interactionActive(Long memberId, String targetType, Long targetId, String actionType) {

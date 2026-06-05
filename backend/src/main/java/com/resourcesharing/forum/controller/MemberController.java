@@ -23,7 +23,7 @@ public class MemberController {
     }
 
     @GetMapping("/me/points")
-    public ApiResponse<Map<String, Object>> pointFlows() {
+    public ApiResponse<Object> pointFlows() {
         return ApiResponse.success(memberService.pointFlows());
     }
 }

@@ -2,7 +2,6 @@ package com.resourcesharing.forum.controller;
 
 import com.resourcesharing.forum.common.ApiResponse;
 import com.resourcesharing.forum.dto.FileDtos.AttachmentView;
-import com.resourcesharing.forum.dto.FileDtos.DownloadResult;
 import com.resourcesharing.forum.service.DesignSpecForumService;
 import com.resourcesharing.forum.service.FileService;
 import org.springframework.security.core.Authentication;
@@ -24,8 +23,12 @@ public class FileController {
     }
 
     @PostMapping("/upload")
-    public ApiResponse<AttachmentView> upload(@RequestParam MultipartFile file, @RequestParam(required = false) Long resourceId) {
-        return ApiResponse.success(fileService.upload(file, resourceId));
+    public ApiResponse<AttachmentView> upload(
+            @RequestParam MultipartFile file,
+            @RequestParam(required = false) Long resourceId,
+            Authentication authentication
+    ) {
+        return ApiResponse.created(fileService.upload(file, resourceId, accountId(authentication)));
     }
 
     @GetMapping("/{id}/download")
@@ -36,6 +39,15 @@ public class FileController {
     @GetMapping("/resources/{resourceId}")
     public ApiResponse<List<AttachmentView>> listByResource(@PathVariable Long resourceId) {
         return ApiResponse.success(fileService.listByResource(resourceId));
+    }
+
+    @PostMapping("/{id}/bind-resource/{resourceId}")
+    public ApiResponse<AttachmentView> bindToResource(
+            @PathVariable Long id,
+            @PathVariable Long resourceId,
+            Authentication authentication
+    ) {
+        return ApiResponse.success(fileService.bindToResource(id, resourceId, accountId(authentication)));
     }
 
     private static Long accountId(Authentication authentication) {

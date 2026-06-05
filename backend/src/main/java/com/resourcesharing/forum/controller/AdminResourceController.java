@@ -3,11 +3,19 @@ package com.resourcesharing.forum.controller;
 import com.resourcesharing.forum.common.ApiResponse;
 import com.resourcesharing.forum.common.PageQuery;
 import com.resourcesharing.forum.common.PageResult;
-import com.resourcesharing.forum.dto.ResourceDtos.ResourceView;
 import com.resourcesharing.forum.dto.ResourceDtos.ReviewRequest;
 import com.resourcesharing.forum.service.AdminResourceService;
 import jakarta.validation.Valid;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/admin/resources")
@@ -19,36 +27,63 @@ public class AdminResourceController {
     }
 
     @GetMapping("/pending")
-    public ApiResponse<PageResult<ResourceView>> pending(PageQuery query) {
-        return ApiResponse.success(adminResourceService.pending(query));
+    public ApiResponse<PageResult<Map<String, Object>>> pending(PageQuery query, Authentication authentication) {
+        return ApiResponse.success(adminResourceService.pending(query, accountId(authentication)));
     }
 
     @PostMapping("/{id}/approve")
-    public ApiResponse<ResourceView> approve(@PathVariable Long id) {
-        return ApiResponse.success(adminResourceService.review(new ReviewRequest(id, true, null)));
+    public ApiResponse<Map<String, Object>> approve(@PathVariable Long id, Authentication authentication) {
+        return ApiResponse.success(adminResourceService.review(new ReviewRequest(id, true, null), accountId(authentication)));
     }
 
     @PostMapping("/{id}/reject")
-    public ApiResponse<ResourceView> reject(@PathVariable Long id, @RequestBody(required = false) ReviewRequest request) {
-        String reason = request == null ? "审核驳回" : request.reason();
-        return ApiResponse.success(adminResourceService.review(new ReviewRequest(id, false, reason)));
+    public ApiResponse<Map<String, Object>> reject(
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, Object> request,
+            Authentication authentication
+    ) {
+        String reason = request == null || request.get("reason") == null ? "审核驳回" : String.valueOf(request.get("reason"));
+        return ApiResponse.success(adminResourceService.review(new ReviewRequest(id, false, reason), accountId(authentication)));
     }
 
     @PostMapping("/{id}/review")
-    public ApiResponse<ResourceView> review(@Valid @RequestBody ReviewRequest request) {
-        return ApiResponse.success(adminResourceService.review(request));
+    public ApiResponse<Map<String, Object>> review(@Valid @RequestBody ReviewRequest request, Authentication authentication) {
+        return ApiResponse.success(adminResourceService.review(request, accountId(authentication)));
     }
 
     @PostMapping("/{id}/offline")
-    public ApiResponse<Void> offline(@PathVariable Long id) {
-        adminResourceService.offline(id);
-        return ApiResponse.success();
+    public ApiResponse<Map<String, Object>> offline(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> request, Authentication authentication) {
+        return ApiResponse.success(adminResourceService.transition(id, accountId(authentication), "OFFLINE", request));
     }
 
     @PostMapping("/{id}/restore")
-    public ApiResponse<Void> restore(@PathVariable Long id) {
-        adminResourceService.restore(id);
-        return ApiResponse.success();
+    public ApiResponse<Map<String, Object>> restore(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> request, Authentication authentication) {
+        return ApiResponse.success(adminResourceService.transition(id, accountId(authentication), "RESTORE", request));
+    }
+
+    @PostMapping("/{id}/risk-review")
+    public ApiResponse<Map<String, Object>> riskReview(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> request, Authentication authentication) {
+        return ApiResponse.success(adminResourceService.transition(id, accountId(authentication), "RISK_REVIEW", request));
+    }
+
+    @PostMapping("/{id}/copyright-down")
+    public ApiResponse<Map<String, Object>> copyrightDown(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> request, Authentication authentication) {
+        return ApiResponse.success(adminResourceService.transition(id, accountId(authentication), "COPYRIGHT_DOWN", request));
+    }
+
+    @DeleteMapping("/{id}")
+    public ApiResponse<Map<String, Object>> delete(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> request, Authentication authentication) {
+        return ApiResponse.success(adminResourceService.transition(id, accountId(authentication), "DELETE", request));
+    }
+
+    private static Long accountId(Authentication authentication) {
+        if (authentication == null || authentication.getName() == null) {
+            return 1L;
+        }
+        try {
+            return Long.parseLong(authentication.getName());
+        } catch (NumberFormatException ignored) {
+            return 1L;
+        }
     }
 }
-

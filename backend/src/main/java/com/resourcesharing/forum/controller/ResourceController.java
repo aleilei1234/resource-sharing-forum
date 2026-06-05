@@ -54,7 +54,16 @@ public class ResourceController {
 
     @PostMapping("/{id}/submit")
     public ApiResponse<Map<String, Object>> submit(@PathVariable Long id, Authentication authentication) {
-        return ApiResponse.success(forumService.resourceDetail(id, accountId(authentication)));
+        return ApiResponse.success(forumService.submitResource(id, accountId(authentication)));
+    }
+
+    @PostMapping("/{id}/withdraw")
+    public ApiResponse<Map<String, Object>> withdraw(
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, Object> request,
+            Authentication authentication
+    ) {
+        return ApiResponse.success(forumService.withdrawResource(id, accountId(authentication), request == null ? Map.of() : request));
     }
 
     @PostMapping("/{id}/favorite")

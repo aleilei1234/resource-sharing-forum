@@ -28,9 +28,14 @@ public class AuthController {
         return ApiResponse.success(forumService.login(request));
     }
 
+    @PostMapping("/reset-password/code")
+    public ApiResponse<Map<String, Object>> resetPasswordCode(@RequestBody Map<String, Object> request) {
+        return ApiResponse.success(forumService.requestResetPasswordCode(request));
+    }
+
     @PostMapping("/reset-password")
-    public ApiResponse<Map<String, Object>> resetPassword() {
-        return ApiResponse.success(Map.of("ok", true));
+    public ApiResponse<Map<String, Object>> resetPassword(@RequestBody Map<String, Object> request) {
+        return ApiResponse.success(forumService.resetPassword(request));
     }
 
     @PostMapping("/logout")
