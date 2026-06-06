@@ -21,3 +21,10 @@
 /backend/*.log
 /backend/deployment-evidence/
 
+# Frontend build/runtime
+**/node_modules/
+**/dist/
+**/.vite/
+**/.env.local
+/web_admin/*.log
+
