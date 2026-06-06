@@ -92,6 +92,7 @@ class DesignSpecFacadeStructureTest {
     @Test
     void notificationFacadeAndDispatcherKeepInfrastructureBehindModuleBoundary() {
         assertNoFieldType(NotificationService.class, org.springframework.jdbc.core.JdbcTemplate.class);
+        assertNoFieldType(com.resourcesharing.forum.service.MemberService.class, org.springframework.jdbc.core.JdbcTemplate.class);
         assertNoFieldType(NotificationDispatcher.class, org.springframework.jdbc.core.JdbcTemplate.class);
     }
 

@@ -148,7 +148,7 @@
 - Added deployment script regression tests for the production acceptance script:
   - missing `.env` fails before Docker commands
   - `-SkipBuild` validates `.env` and then reports missing Docker through a controlled no-Docker PATH
-- Tightened deployment alignment against the local `规范.docx` and four PDF extracts:
+- Tightened deployment alignment against the three Markdown design documents, local `规范.docx`, and four PDF extracts:
   - MySQL Compose now uses server-side `utf8mb4` while the JDBC URL avoids invalid Java charset aliases
   - Compose volumes now use stable explicit names for MySQL data and backend uploads
   - deploy, backup, and restore scripts now pass the supplied `.env` to Docker Compose through `--env-file`
@@ -210,7 +210,7 @@
 - `scripts/verify-production-acceptance.ps1` documents and automates the Docker-host production acceptance chain.
 - `scripts/verify-frontend-integration.ps1` documents and automates local no-database backend plus `web_user` real-backend contract smoke.
 - `scripts/verify-local-acceptance.ps1` documents and automates the current no-Docker local acceptance gate.
-- `SPEC_DEPLOYMENT_ACCEPTANCE.md` maps `规范.docx` and the four PDFs to deployment, API, database, security, logging, backup, and frontend-handoff evidence.
+- `SPEC_DEPLOYMENT_ACCEPTANCE.md` maps the three Markdown design documents, `规范.docx`, and the four PDFs to deployment, API, database, security, logging, backup, and frontend-handoff evidence.
 - `LegacyDesignSpecForumService` still contains duplicated legacy code during the transition, but it is no longer the facade entrypoint for the migrated design-spec module services.
 - Controllers continue to call the facade.
 - API responses remain `{ code, message, data, timestamp }`.
