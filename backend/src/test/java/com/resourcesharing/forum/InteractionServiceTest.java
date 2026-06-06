@@ -3,6 +3,7 @@ package com.resourcesharing.forum;
 import com.resourcesharing.forum.common.BusinessException;
 import com.resourcesharing.forum.common.ErrorCode;
 import com.resourcesharing.forum.service.interaction.InteractionService;
+import com.resourcesharing.forum.service.support.ContentModerationService;
 import com.resourcesharing.forum.service.support.ForumLookupService;
 import com.resourcesharing.forum.service.support.MappingSupport;
 import com.resourcesharing.forum.service.support.TxSupport;
@@ -116,12 +117,38 @@ class InteractionServiceTest {
         assertThat(jdbc.updateSql()).doesNotContain("INSERT INTO user_interaction");
     }
 
+    @Test
+    void addCommentRejectsSensitiveContentBeforeWritingComment() {
+        CapturingJdbcTemplate jdbc = new CapturingJdbcTemplate();
+        InteractionService service = service(jdbc, new ContentModerationService(new TxSupport(provider(null), provider(null))) {
+            @Override
+            public void requireClean(String content) {
+                throw new BusinessException(ErrorCode.SENSITIVE_CONTENT, ErrorCode.SENSITIVE_CONTENT.message());
+            }
+        });
+
+        assertThatThrownBy(() -> service.addComment(7L, Map.of(
+                "targetType", "RESOURCE",
+                "targetId", 42L,
+                "content", "sensitive content"
+        )))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).errorCode())
+                .isEqualTo(ErrorCode.SENSITIVE_CONTENT);
+
+        assertThat(jdbc.updateSql()).isEmpty();
+    }
+
     private static InteractionService service(JdbcTemplate jdbc) {
+        return service(jdbc, new ContentModerationService(new TxSupport(provider(null), provider(null))));
+    }
+
+    private static InteractionService service(JdbcTemplate jdbc, ContentModerationService contentModerationService) {
         TxSupport txSupport = new TxSupport(provider(jdbc), provider(null));
         ValueSupport values = new ValueSupport();
         ForumLookupService lookup = new ForumLookupService(txSupport);
         MappingSupport mappings = new MappingSupport(values, lookup);
-        return new InteractionService(txSupport, values, mappings, lookup, null, null);
+        return new InteractionService(txSupport, values, mappings, lookup, null, null, contentModerationService);
     }
 
     private static final class CapturingJdbcTemplate extends JdbcTemplate {

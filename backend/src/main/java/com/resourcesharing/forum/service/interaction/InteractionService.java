@@ -5,6 +5,7 @@ import com.resourcesharing.forum.common.ErrorCode;
 import com.resourcesharing.forum.common.PageResult;
 import com.resourcesharing.forum.service.notification.NotificationDispatcher;
 import com.resourcesharing.forum.service.resource.ResourceQueryService;
+import com.resourcesharing.forum.service.support.ContentModerationService;
 import com.resourcesharing.forum.service.support.ForumLookupService;
 import com.resourcesharing.forum.service.support.MappingSupport;
 import com.resourcesharing.forum.service.support.TxSupport;
@@ -29,6 +30,7 @@ public class InteractionService {
     private final ForumLookupService lookup;
     private final ResourceQueryService resourceQueryService;
     private final NotificationDispatcher notificationDispatcher;
+    private final ContentModerationService contentModerationService;
 
     public InteractionService(
             TxSupport txSupport,
@@ -36,7 +38,8 @@ public class InteractionService {
             MappingSupport mappings,
             ForumLookupService lookup,
             ResourceQueryService resourceQueryService,
-            NotificationDispatcher notificationDispatcher
+            NotificationDispatcher notificationDispatcher,
+            ContentModerationService contentModerationService
     ) {
         this.txSupport = txSupport;
         this.values = values;
@@ -44,6 +47,7 @@ public class InteractionService {
         this.lookup = lookup;
         this.resourceQueryService = resourceQueryService;
         this.notificationDispatcher = notificationDispatcher;
+        this.contentModerationService = contentModerationService;
     }
 
     public Map<String, Object> toggleResourceInteraction(Long resourceId, String action, Long accountId) {
@@ -363,6 +367,7 @@ public class InteractionService {
         if (normalized.isBlank() || normalized.length() > 500) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "comment content length must be between 1 and 500");
         }
+        contentModerationService.requireClean(normalized);
         return normalized;
     }
 
