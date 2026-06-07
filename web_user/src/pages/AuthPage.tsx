@@ -1,7 +1,7 @@
 import { LockOutlined, MailOutlined, UserOutlined } from '@ant-design/icons';
 import { Button, Form, Input, Space, Typography, message } from 'antd';
 import { useMutation } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { login, register, resetPassword } from '../api/endpoints';
 import { useAuthStore } from '../store/auth';
 
@@ -15,7 +15,9 @@ const copy: Record<AuthMode, { title: string; subtitle: string; action: string }
 
 export default function AuthPage({ mode }: { mode: AuthMode }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { setSession } = useAuthStore();
+  const returnTo = typeof location.state === 'object' && location.state && 'from' in location.state ? String(location.state.from || '/') : '/';
   const mutation = useMutation({
     mutationFn: async (values: Record<string, string>) => {
       if (mode === 'login') return login({ account: values.account, password: values.password });
@@ -27,7 +29,7 @@ export default function AuthPage({ mode }: { mode: AuthMode }) {
       if (result) {
         setSession(result.token, result.user);
         message.success(`${copy[mode].action}成功`);
-        navigate('/');
+        navigate(returnTo);
       } else {
         message.success('密码已重置，请重新登录');
         navigate('/login');

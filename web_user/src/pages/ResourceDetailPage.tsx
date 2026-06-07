@@ -1,15 +1,12 @@
 import {
-  DownloadOutlined,
-  ExclamationCircleOutlined,
-  FileOutlined,
   HeartFilled,
   HeartOutlined,
   StarFilled,
   StarOutlined,
 } from '@ant-design/icons';
-import { Button, Descriptions, List, Rate, Result, Space, Spin, Tag, Typography, message } from 'antd';
+import { Button, Rate, Result, Spin, message } from 'antd';
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useRateResource, useResource, useResourceAction } from '../api/hooks';
 import CommentPanel from '../components/CommentPanel';
 import ReportModal from '../components/ReportModal';
@@ -18,6 +15,7 @@ import type { ResourceAttachment } from '../types';
 
 export default function ResourceDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const resourceQuery = useResource(id);
   const action = useResourceAction();
   const rateResource = useRateResource();
@@ -35,96 +33,84 @@ export default function ResourceDetailPage() {
 
   return (
     <>
-      <section className="detail-hero">
-        <Space wrap>
-          <Tag color="green">{resource.type}</Tag>
-          <Tag>{getCategoryName(resource.category1, resource.category2)}</Tag>
-          <Typography.Text type="secondary">发布于 {resource.date}</Typography.Text>
-        </Space>
-        <h1 className="detail-title">{resource.title}</h1>
-        <Typography.Paragraph style={{ fontSize: 16, lineHeight: 1.8 }}>{resource.description}</Typography.Paragraph>
-        <div className="tag-row">
-          {resource.tags.map((tag) => (
-            <Tag key={tag}>{tag}</Tag>
+      <div className="back-btn-wrapper">
+        <button type="button" className="back-btn" onClick={() => navigate(-1)}>
+          ← 返回
+        </button>
+      </div>
+
+      <section className="card detail-card">
+        <div className="card-body">
+          <h1 className="resource-detail-title">
+            {resource.title}
+            <button type="button" className="text-btn danger" style={{ marginLeft: 8 }} onClick={() => setReportOpen(true)}>
+              版权投诉
+            </button>
+          </h1>
+
+          <div className="detail-meta">
+            <span>分类：{getCategoryName(resource.category1, resource.category2)}</span>
+            <span>类型：{resource.type}</span>
+            <span>发布者：{resource.author}</span>
+            <span>发布时间：{resource.date}</span>
+          </div>
+          <div className="detail-meta">
+            <span>下载：{resource.downloads}</span>
+            <span>评分：{resource.score.toFixed(1)}</span>
+            <span>评分人数：{resource.ratingCount}</span>
+            <span>附件：{resource.attachments.length}</span>
+          </div>
+
+          <div className="resource-tags">
+            {resource.tags.map((tag) => (
+              <span className="resource-tag" key={tag}>
+                {tag}
+              </span>
+            ))}
+          </div>
+
+          <div className="action-group">
+            <button type="button" className={resource.liked ? 'text-btn active' : 'text-btn'} onClick={() => action.mutate({ id: resource.id, action: 'like' })}>
+              {resource.liked ? <HeartFilled /> : <HeartOutlined />} {resource.liked ? '已点赞' : '点赞'}
+            </button>
+            <button type="button" className={resource.favorited ? 'text-btn active' : 'text-btn'} onClick={() => action.mutate({ id: resource.id, action: 'favorite' })}>
+              {resource.favorited ? <StarFilled /> : <StarOutlined />} {resource.favorited ? '已收藏' : '收藏'}
+            </button>
+            <span className="action-item">
+              <span>评分：</span>
+              <Rate
+                allowClear
+                allowHalf
+                value={resource.userRating || 0}
+                onChange={async (score) => {
+                  await rateResource.mutateAsync({ id: resource.id, score });
+                  message.success(score ? `已评分 ${score} 分` : '已清除评分');
+                }}
+              />
+            </span>
+            <button type="button" className="text-btn danger" onClick={() => setReportOpen(true)}>
+              举报
+            </button>
+          </div>
+
+          <div className="detail-section-title">资源介绍</div>
+          <div className="desc">{resource.detail || resource.description}</div>
+
+          <div className="detail-section-title">附件列表</div>
+          {resource.attachments.map((attachment) => (
+            <div className="attach-item" key={attachment.id}>
+              <div className="attach-info">
+                <div className="attach-name">{attachment.name}</div>
+                <div className="attach-size">
+                  {attachment.type} / {attachment.size} / 已下载 {attachment.downloads} 次
+                </div>
+              </div>
+              <button type="button" className="download-btn" disabled={action.isPending} onClick={() => downloadAttachment(attachment)}>
+                下载此附件
+              </button>
+            </div>
           ))}
         </div>
-        <div className="detail-rating">
-          <Space align="center" wrap>
-            <Typography.Text strong>资源评分</Typography.Text>
-            <Rate
-              allowClear
-              allowHalf
-              value={resource.userRating || 0}
-              onChange={async (score) => {
-                await rateResource.mutateAsync({ id: resource.id, score });
-                message.success(score ? `已评分 ${score} 分` : '已清除评分');
-              }}
-            />
-            <Typography.Text type="secondary">
-              当前均分 {resource.score.toFixed(1)} / 5，{resource.ratingCount} 人评分
-            </Typography.Text>
-          </Space>
-        </div>
-        <div className="detail-actions">
-          <Button
-            icon={resource.favorited ? <StarFilled /> : <StarOutlined />}
-            className={resource.favorited ? 'action-active favorite' : undefined}
-            onClick={() => action.mutate({ id: resource.id, action: 'favorite' })}
-          >
-            {resource.favorited ? '已收藏' : '收藏'}
-          </Button>
-          <Button
-            icon={resource.liked ? <HeartFilled /> : <HeartOutlined />}
-            className={resource.liked ? 'action-active like' : undefined}
-            onClick={() => action.mutate({ id: resource.id, action: 'like' })}
-          >
-            {resource.liked ? '已点赞' : '点赞'}
-          </Button>
-          <Button danger icon={<ExclamationCircleOutlined />} onClick={() => setReportOpen(true)}>
-            举报/版权投诉
-          </Button>
-        </div>
-      </section>
-
-      <Descriptions bordered column={{ xs: 1, md: 2 }} style={{ marginTop: 18 }}>
-        <Descriptions.Item label="发布者">{resource.author}</Descriptions.Item>
-        <Descriptions.Item label="资源类型">{resource.type}</Descriptions.Item>
-        <Descriptions.Item label="总下载次数">{resource.downloads}</Descriptions.Item>
-        <Descriptions.Item label="附件数量">{resource.attachments.length}</Descriptions.Item>
-        <Descriptions.Item label="详细说明" span={2}>{resource.detail}</Descriptions.Item>
-      </Descriptions>
-
-      <section className="detail-hero attachment-panel">
-        <div className="section-head">
-          <div>
-            <p className="section-kicker">FILES</p>
-            <h2 className="section-title">选择附件下载</h2>
-          </div>
-        </div>
-        <List
-          dataSource={resource.attachments}
-          renderItem={(attachment) => (
-            <List.Item
-              actions={[
-                <Button
-                  key="download"
-                  type="primary"
-                  icon={<DownloadOutlined />}
-                  loading={action.isPending}
-                  onClick={() => downloadAttachment(attachment)}
-                >
-                  下载此附件
-                </Button>,
-              ]}
-            >
-              <List.Item.Meta
-                avatar={<FileOutlined className="attachment-icon" />}
-                title={attachment.name}
-                description={`${attachment.type} / ${attachment.size} / 已下载 ${attachment.downloads} 次`}
-              />
-            </List.Item>
-          )}
-        />
       </section>
 
       <CommentPanel kind="resources" id={resource.id} comments={comments} />

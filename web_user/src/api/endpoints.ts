@@ -77,10 +77,11 @@ export async function getDemands(params: ListParams) {
 }
 
 export async function getDemand(id: string | number) {
-  const { data } = await apiClient.get<{ demand?: Demand; request?: Demand; comments: Comment[] }>(`/demands/${id}`);
+  const { data } = await apiClient.get<{ demand?: Demand; request?: Demand; comments?: Comment[]; replies?: Comment[]; answers?: Comment[] }>(`/demands/${id}`);
+  const replies = data.replies || data.answers || [];
   return {
     demand: normalizeDemand(data.demand || data.request),
-    comments: data.comments || [],
+    comments: [...replies, ...(data.comments || [])].map(normalizeComment),
   };
 }
 
@@ -90,8 +91,9 @@ export async function publishDemand(values: Record<string, unknown>) {
 }
 
 export async function addComment(kind: 'resources' | 'demands', id: number, content: string) {
-  const { data } = await apiClient.post<Comment>(`/${kind}/${id}/comments`, { content });
-  return data;
+  const url = kind === 'demands' ? `/demands/${id}/replies` : `/${kind}/${id}/comments`;
+  const { data } = await apiClient.post<Comment>(url, { content });
+  return normalizeComment(data);
 }
 
 export async function reportContent(values: { target: ReportTarget; targetId: number; type: string; reason: string }) {
@@ -110,6 +112,7 @@ function normalizePage<T>(page: PagedResult<T>, mapItem: (item: T) => T): PagedR
 function normalizeResource(resource: Resource): Resource {
   return {
     ...resource,
+    type: normalizeResourceType(resource?.type || (resource as Resource & { resourceType?: string })?.resourceType),
     tags: resource?.tags || [],
     attachments: resource?.attachments || [],
     downloads: Number(resource?.downloads || 0),
@@ -121,9 +124,32 @@ function normalizeResource(resource: Resource): Resource {
   };
 }
 
+function normalizeResourceType(type?: string): string {
+  const normalized = String(type || '').trim();
+  const map: Record<string, string> = {
+    DOCUMENT: '文档',
+    document: '文档',
+    SOFTWARE: '软件',
+    software: '软件',
+    SOURCE_CODE: '源码',
+    source: '源码',
+    MATERIAL: '素材',
+    material: '素材',
+    COURSE: '教程',
+    course: '教程',
+    TEMPLATE: '模板',
+    template: '模板',
+    LINK: '链接',
+    link: '链接',
+  };
+  return map[normalized] || normalized || '文档';
+}
+
 function normalizeDemand(demand?: Demand): Demand {
   const rawStatus = String(demand?.status || '');
   const status = rawStatus === 'RESOLVED' || rawStatus === 'solved' ? 'solved' : 'active';
+  const points = Number(demand?.points || (demand as Demand & { rewardPoints?: number })?.rewardPoints || 0);
+  const rewardType: Demand['rewardType'] = String(demand?.rewardType || '').toUpperCase() === 'POINT' || points > 0 ? 'POINT' : 'FREE';
   return {
     ...demand,
     id: demand?.id || 0,
@@ -131,7 +157,8 @@ function normalizeDemand(demand?: Demand): Demand {
     description: demand?.description || '',
     category1: demand?.category1 || '',
     category2: demand?.category2 || '',
-    points: Number(demand?.points || 0),
+    rewardType,
+    points,
     replyCount: Number(demand?.replyCount || 0),
     author: demand?.author || '',
     date: demand?.date || '',
@@ -141,12 +168,31 @@ function normalizeDemand(demand?: Demand): Demand {
   };
 }
 
+function normalizeComment(comment?: Comment): Comment {
+  return {
+    ...(comment || {}),
+    id: comment?.id || 0,
+    author: comment?.author || '',
+    content: comment?.content || '',
+    date: comment?.date || '',
+    mine: Boolean(comment?.mine),
+    accepted: Boolean(comment?.accepted),
+    replies: (comment?.replies || []).map(normalizeComment),
+  };
+}
+
 function normalizeDemandPayload(values: Record<string, unknown>) {
+  const requestedPoints = Number(values.rewardPoints ?? values.points ?? 0) || 0;
+  const rawRewardType = String(values.rewardType || '').toUpperCase();
+  const rewardType = rawRewardType === 'POINT' || (!rawRewardType && requestedPoints > 0) ? 'POINT' : 'FREE';
+  const rewardPoints = rewardType === 'POINT' ? requestedPoints : 0;
   return {
     ...values,
     tags: Array.isArray(values.tags) ? values.tags.join(',') : values.tags,
     content: values.content || values.description,
-    rewardPoints: values.rewardPoints || values.points,
+    rewardType,
+    rewardPoints,
+    points: rewardPoints,
     expectedFormat: values.expectedFormat || values.format,
   };
 }

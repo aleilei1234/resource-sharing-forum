@@ -1,22 +1,23 @@
 import { PlusOutlined } from '@ant-design/icons';
-import { Button, Col, Empty, Pagination, Row, Spin, message } from 'antd';
-import { useMemo, useState } from 'react';
+import { Button, Empty, Pagination, Spin, message } from 'antd';
+import { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useResourceAction, useResources } from '../api/hooks';
 import ListingFilter from '../components/ListingFilter';
 import ResourceCard from '../components/ResourceCard';
 import type { ListParams } from '../types';
+import { listParamsToSearchParams, resourceListParamsFromSearch } from '../utils/listParams';
 
 export default function ResourcesPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [params, setParams] = useState<ListParams>({
-    keyword: searchParams.get('keyword') || undefined,
-    cate1: searchParams.get('cate1') || undefined,
-    page: 1,
-    pageSize: 6,
-    sort: 'latest',
-  });
+  const searchKey = searchParams.toString();
+  const params = useMemo(() => resourceListParamsFromSearch(searchParams), [searchKey, searchParams]);
+  const updateParams = (next: ListParams | ((prev: ListParams) => ListParams)) => {
+    const resolved = typeof next === 'function' ? next(params) : next;
+    setSearchParams(listParamsToSearchParams(resolved, 'resources'), { replace: true });
+  };
+
   const resourcesQuery = useResources(params);
   const action = useResourceAction();
 
@@ -24,23 +25,45 @@ export default function ResourcesPage() {
 
   return (
     <>
-      <div className="section-head">
-        <div>
-          <p className="section-kicker">RESOURCE LIBRARY</p>
-          <h1 className="section-title">资源库</h1>
-        </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/publish-resource')}>
+      <div className="resource-header">
+        <h1>资源库</h1>
+        <Button className="publish-btn" type="primary" icon={<PlusOutlined />} onClick={() => navigate('/publish-resource')}>
           发布资源
         </Button>
       </div>
 
-      <ListingFilter mode="resources" value={params} onChange={setParams} />
+      <ListingFilter mode="resources" value={params} onChange={updateParams} />
 
-      <Spin spinning={resourcesQuery.isLoading || action.isPending}>
-        <Row gutter={[16, 16]}>
-          {items.map((resource) => (
-            <Col xs={24} md={12} key={resource.id}>
+      <div className="card">
+        <div className="card-body">
+          <div className="sort-bar">
+            <div>共 {resourcesQuery.data?.total || 0} 个公开资源（仅显示已发布）</div>
+            <div className="sort-items">
+              {[
+                ['latest', '最新发布'],
+                ['download', '下载最多'],
+                ['score', '评分最高'],
+              ].map(([key, label]) => (
+                <button
+                  type="button"
+                  key={key}
+                  className={params.sort === key ? 'active' : undefined}
+                  onClick={() => updateParams((prev) => ({ ...prev, sort: key, page: 1 }))}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <Spin spinning={resourcesQuery.isLoading || action.isPending}>
+          <div className="card-body" style={{ padding: 0 }}>
+            {items.map((resource) => (
               <ResourceCard
+                key={resource.id}
                 resource={resource}
                 onFavorite={async (id) => {
                   await action.mutateAsync({ id, action: 'favorite' });
@@ -51,18 +74,18 @@ export default function ResourcesPage() {
                   message.success('点赞状态已更新');
                 }}
               />
-            </Col>
-          ))}
-        </Row>
-        {!items.length && !resourcesQuery.isLoading && <Empty description="暂无匹配资源" style={{ marginTop: 40 }} />}
-      </Spin>
+            ))}
+            {!items.length && !resourcesQuery.isLoading && <Empty description="暂无匹配资源" style={{ padding: '40px 0' }} />}
+          </div>
+        </Spin>
+      </div>
 
       <Pagination
-        style={{ marginTop: 22, textAlign: 'right' }}
+        className="page-pagination"
         current={params.page}
         pageSize={params.pageSize}
         total={resourcesQuery.data?.total || 0}
-        onChange={(page, pageSize) => setParams((prev) => ({ ...prev, page, pageSize }))}
+        onChange={(page, pageSize) => updateParams((prev) => ({ ...prev, page, pageSize }))}
       />
     </>
   );

@@ -13,17 +13,23 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/admin/resources")
+@RequestMapping({"/api/admin/resources", "/api/v1/admin/resources"})
 public class AdminResourceController {
     private final AdminResourceService adminResourceService;
 
     public AdminResourceController(AdminResourceService adminResourceService) {
         this.adminResourceService = adminResourceService;
+    }
+
+    @GetMapping
+    public ApiResponse<Map<String, Object>> list(@RequestParam Map<String, String> params, Authentication authentication) {
+        return ApiResponse.success(adminResourceService.list(params, accountId(authentication)));
     }
 
     @GetMapping("/pending")

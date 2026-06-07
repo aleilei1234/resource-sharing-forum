@@ -17,15 +17,15 @@ export const pendingResources: AdminResource[] = [
 ];
 
 export const managedResources: AdminResource[] = [
-  { id: 'R004', title: '编程入门教程', status: '已发布' },
-  { id: 'R005', title: '违规影音文件', status: '已下架' },
-  { id: 'R006', title: '版权投诉下架文件', status: '版权下架' },
+  { id: 'R004', title: '编程入门教程', user: 'user002', status: '已发布' },
+  { id: 'R005', title: '违规影音文件', user: 'user007', status: '已下架' },
+  { id: 'R006', title: '版权投诉下架文件', user: 'user004', status: '版权下架' },
 ];
 
 export const requestPosts: AdminRequestPost[] = [
-  { id: 'Q001', title: '求考研历年真题', status: '进行中' },
-  { id: 'Q002', title: '违规资源求购帖', status: '已关闭' },
-  { id: 'Q003', title: '闲置书籍互换求助', status: '进行中' },
+  { id: 'Q001', title: '求考研历年真题', user: 'user006', status: '进行中' },
+  { id: 'Q002', title: '违规资源求购帖', user: 'user009', status: '已关闭' },
+  { id: 'Q003', title: '闲置书籍互换求助', user: 'user011', status: '进行中' },
 ];
 
 export const comments: AdminComment[] = [

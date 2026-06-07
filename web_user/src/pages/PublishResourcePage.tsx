@@ -16,14 +16,10 @@ export default function PublishResourcePage() {
   const selectedCategory = categories.find((item) => item.id === category1);
 
   return (
-    <>
-      <div className="section-head">
-        <div>
-          <p className="section-kicker">PUBLISH</p>
-          <h1 className="section-title">发布资源</h1>
-        </div>
-      </div>
-      <div className="detail-hero">
+    <div className="narrow-page">
+      <div className="card form-card">
+        <div className="card-title">发布资源</div>
+        <div className="card-body">
         <Form
           form={form}
           layout="vertical"
@@ -47,7 +43,7 @@ export default function PublishResourcePage() {
             navigate(`/resources/${resource.id}`);
           }}
         >
-          <Form.Item name="title" label="资源标题" rules={[{ required: true, message: '请输入资源标题' }]}>
+          <Form.Item name="title" label="资源标题" extra="标题需清晰描述资源内容，便于搜索" rules={[{ required: true, message: '请输入资源标题' }]}>
             <Input placeholder="5-80 字，清楚描述资源内容" />
           </Form.Item>
 
@@ -79,7 +75,7 @@ export default function PublishResourcePage() {
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item name="tags" label="资源标签" rules={[{ required: true, message: '请添加标签' }]}>
+              <Form.Item name="tags" label="资源标签" extra="标签用于精准搜索，建议使用 3-5 个" rules={[{ required: true, message: '请添加标签' }]}>
                 <Select mode="tags" maxCount={5} placeholder="输入标签后回车，最多 5 个" />
               </Form.Item>
             </Col>
@@ -104,18 +100,23 @@ export default function PublishResourcePage() {
                 <InboxOutlined />
               </p>
               <p className="ant-upload-text">选择或拖拽资源附件，可一次上传多个</p>
-              <p className="ant-upload-hint">最多 5 个附件；详情页会按附件逐个展示下载入口。</p>
+              <p className="ant-upload-hint">支持 pdf/doc/zip/rar/png 等，单个不超过 100MB，最多上传 5 个。</p>
             </Upload.Dragger>
+            <div className="tip">根据您的会员等级，当前最多可上传 5 个附件</div>
           </Form.Item>
 
-          <Button type="primary" htmlType="submit" icon={<SendOutlined />} loading={publish.isPending}>
-            提交审核
-          </Button>
-          <Button style={{ marginLeft: 10 }} onClick={() => navigate(-1)}>
-            取消
-          </Button>
+          <div className="btn-bar">
+            <Button onClick={() => navigate(-1)}>取消</Button>
+            <Button type="primary" htmlType="submit" icon={<SendOutlined />} loading={publish.isPending}>
+              提交审核
+            </Button>
+          </div>
+          <div className="tip" style={{ textAlign: 'center', marginTop: 12 }}>
+            提交后进入待审核状态，审核通过后公开可见
+          </div>
         </Form>
+        </div>
       </div>
-    </>
+    </div>
   );
 }

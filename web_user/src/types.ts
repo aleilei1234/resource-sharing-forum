@@ -15,6 +15,9 @@ export type User = {
   avatar: string;
   level: string;
   points: number;
+  frozenPoints: number;
+  availablePoints: number;
+  rewardLimit: number;
   expNeeded: number;
   passwordUpdatedAt: string;
 };
@@ -50,6 +53,7 @@ export type Resource = {
 };
 
 export type DemandStatus = 'active' | 'solved';
+export type RewardType = 'FREE' | 'POINT';
 
 export type Demand = {
   id: number;
@@ -57,6 +61,7 @@ export type Demand = {
   description: string;
   category1: string;
   category2: string;
+  rewardType?: RewardType;
   points: number;
   replyCount: number;
   author: string;
@@ -84,7 +89,9 @@ export type ListParams = {
   cate2?: string;
   type?: string;
   status?: string;
+  points?: string;
   sort?: string;
+  order?: string;
   page?: number;
   pageSize?: number;
 };

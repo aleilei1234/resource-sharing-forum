@@ -10,6 +10,12 @@ web_user/     用户端 React + Vite 前端
 web_admin/    管理端 React + Vite 前端
 ```
 
+## 当前实现说明
+
+本仓库当前后端、用户端、管理端、数据规范、部署联调和延期项汇总见：
+
+- [CURRENT_IMPLEMENTATION_SUMMARY.md](CURRENT_IMPLEMENTATION_SUMMARY.md)
+
 ## 后端
 
 后端代码位于 `backend/`，已按设计说明书推进 V2 数据库、Flyway 迁移、JWT 鉴权、统一响应、分页结构和核心业务规则落地。

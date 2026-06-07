@@ -235,7 +235,8 @@ public class AuthService {
             return jdbc.queryForObject("""
                     SELECT ua.id, ua.username, ua.email, ua.role, ua.password_changed_time,
                            mp.id AS member_id, mp.nickname, mp.avatar_url, mp.bio,
-                           ml.level_name, mpa.current_points, mpa.frozen_points
+                           ml.level_name, COALESCE(ml.reward_limit, 100) AS reward_limit,
+                           mpa.current_points, mpa.frozen_points
                     FROM user_account ua
                     LEFT JOIN member_profile mp ON mp.account_id = ua.id AND mp.deleted_at IS NULL
                     LEFT JOIN member_point_account mpa ON mpa.member_id = mp.id AND mpa.deleted_at IS NULL
@@ -281,6 +282,8 @@ public class AuthService {
                 "level", "Member",
                 "points", 650,
                 "frozenPoints", 0,
+                "availablePoints", 650,
+                "rewardLimit", 100,
                 "expNeeded", 350,
                 "passwordUpdatedAt", values.today()
         );

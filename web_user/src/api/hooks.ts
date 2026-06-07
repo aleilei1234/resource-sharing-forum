@@ -1,13 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as endpoints from './endpoints';
 import type { ListParams, User } from '../types';
+import { useAuthStore } from '../store/auth';
 
 export function useMe() {
-  return useQuery({ queryKey: ['me'], queryFn: endpoints.getMe });
+  const token = useAuthStore((state) => state.token);
+  return useQuery({ queryKey: ['me'], queryFn: endpoints.getMe, enabled: Boolean(token), retry: 0 });
 }
 
 export function useProfileSummary() {
-  return useQuery({ queryKey: ['profile-summary'], queryFn: endpoints.getProfileSummary });
+  const token = useAuthStore((state) => state.token);
+  return useQuery({ queryKey: ['profile-summary'], queryFn: endpoints.getProfileSummary, enabled: Boolean(token), retry: 0 });
 }
 
 export function useUpdateMe() {

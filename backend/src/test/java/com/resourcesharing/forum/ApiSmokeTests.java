@@ -116,7 +116,26 @@ class ApiSmokeTests {
         mockMvc.perform(get("/api/v1/user/profile").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.username").value("demo_user"));
+                .andExpect(jsonPath("$.data.username").value("demo_user"))
+                .andExpect(jsonPath("$.data.points").exists())
+                .andExpect(jsonPath("$.data.frozenPoints").exists())
+                .andExpect(jsonPath("$.data.availablePoints").exists())
+                .andExpect(jsonPath("$.data.rewardLimit").exists());
+    }
+
+    @Test
+    void userProfileSummaryMatchesFrontendContract() throws Exception {
+        String token = jwtService.generate("1", "MEMBER");
+        mockMvc.perform(get("/api/me/summary").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.profile.username").exists())
+                .andExpect(jsonPath("$.data.resources").isArray())
+                .andExpect(jsonPath("$.data.demands").isArray())
+                .andExpect(jsonPath("$.data.favorites").isArray())
+                .andExpect(jsonPath("$.data.likes").isArray())
+                .andExpect(jsonPath("$.data.messages").isArray())
+                .andExpect(jsonPath("$.data.loginLogs").isArray());
     }
 
     @Test
@@ -125,9 +144,23 @@ class ApiSmokeTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.list").isArray());
 
+        mockMvc.perform(get("/api/demands/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.demand").exists())
+                .andExpect(jsonPath("$.data.replies").isArray())
+                .andExpect(jsonPath("$.data.answers").isArray());
+
         mockMvc.perform(get("/api/v1/comments?targetType=RESOURCE&targetId=1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.list").isArray());
+    }
+
+    @Test
+    void demandReplyEndpointRequiresAuthentication() throws Exception {
+        mockMvc.perform(post("/api/demands/1/replies")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"这里是一条真实求资源回答\"}"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -138,6 +171,100 @@ class ApiSmokeTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"action\":\"APPROVE\"}"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminDashboardEndpointsRequireAdminRoleAndUseUnifiedResponse() throws Exception {
+        mockMvc.perform(get("/api/admin/content"))
+                .andExpect(status().isUnauthorized());
+
+        String memberToken = jwtService.generate("1", "MEMBER");
+        mockMvc.perform(get("/api/admin/content").header("Authorization", "Bearer " + memberToken))
+                .andExpect(status().isForbidden());
+
+        String adminToken = jwtService.generate("2", "ADMIN");
+        mockMvc.perform(get("/api/admin/content").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.auditRows").isArray())
+                .andExpect(jsonPath("$.data.resourceRows").isArray())
+                .andExpect(jsonPath("$.data.requestRows").isArray())
+                .andExpect(jsonPath("$.data.commentRows").isArray());
+    }
+
+    @Test
+    void adminDashboardSectionEndpointsUseStandardPagination() throws Exception {
+        String adminToken = jwtService.generate("2", "ADMIN");
+
+        mockMvc.perform(get("/api/admin/content")
+                        .param("section", "audit")
+                        .param("page", "0")
+                        .param("size", "200")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.section").value("audit"))
+                .andExpect(jsonPath("$.data.total").exists())
+                .andExpect(jsonPath("$.data.list").isArray())
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.size").value(100));
+
+        mockMvc.perform(get("/api/admin/content")
+                        .param("section", "request")
+                        .param("page", "1")
+                        .param("size", "10")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.section").value("request"))
+                .andExpect(jsonPath("$.data.list").isArray())
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.size").value(10));
+
+        mockMvc.perform(get("/api/admin/compliance")
+                        .param("section", "appeal")
+                        .param("page", "1")
+                        .param("size", "10")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.section").value("appeal"))
+                .andExpect(jsonPath("$.data.list").isArray())
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.size").value(10));
+
+        mockMvc.perform(get("/api/admin/catalog")
+                        .param("section", "all")
+                        .param("page", "1")
+                        .param("size", "10")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.section").value("all"))
+                .andExpect(jsonPath("$.data.list").isArray())
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.size").value(10));
+
+        mockMvc.perform(get("/api/admin/catalog/options")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.firstLevelCategories").isArray())
+                .andExpect(jsonPath("$.data.secondLevelCategories").isArray())
+                .andExpect(jsonPath("$.data.resourceTypes").isArray())
+                .andExpect(jsonPath("$.data.tagCandidates").isArray())
+                .andExpect(jsonPath("$.data.missingTags").isArray());
+    }
+
+    @Test
+    void adminLogsDefaultToAuditDensity() throws Exception {
+        String adminToken = jwtService.generate("2", "ADMIN");
+
+        mockMvc.perform(get("/api/admin/logs")
+                        .param("page", "0")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.list").isArray())
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.size").value(8));
     }
 
     @Test

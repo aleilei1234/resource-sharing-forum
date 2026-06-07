@@ -189,14 +189,26 @@ export const handlers = [
   }),
 
   http.post('/api/demands', async ({ request }) => {
-    const body = (await request.json()) as Partial<typeof db.demands[number]> & { tags?: string[] };
+    const body = (await request.json()) as Partial<typeof db.demands[number]> & { rewardPoints?: number; tags?: string[] };
+    const requestedPoints = Number(body.rewardPoints ?? body.points ?? 0) || 0;
+    const rewardType = String(body.rewardType || '').toUpperCase() === 'POINT' || requestedPoints > 0 ? 'POINT' as const : 'FREE' as const;
+    const rewardPoints = rewardType === 'POINT' ? requestedPoints : 0;
+    const availablePoints = Number(db.user.availablePoints ?? Math.max(0, db.user.points - db.user.frozenPoints));
+    if (rewardPoints > availablePoints || rewardPoints > db.user.rewardLimit) {
+      return HttpResponse.json({ message: '悬赏积分不能超过可用积分或会员等级上限' }, { status: 400 });
+    }
+    if (rewardPoints > 0) {
+      db.user.frozenPoints += rewardPoints;
+      db.user.availablePoints = Math.max(0, db.user.points - db.user.frozenPoints);
+    }
     const demand = {
       id: db.demands.length + 1,
       title: body.title || '新求资源',
       description: body.description || '',
       category1: body.category1 || '1',
       category2: body.category2 || '11',
-      points: Number(body.points || 0),
+      rewardType,
+      points: rewardPoints,
       replyCount: 0,
       author: db.user.nickname,
       date: new Date().toISOString().slice(0, 10),

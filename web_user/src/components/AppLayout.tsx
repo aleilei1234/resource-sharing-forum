@@ -1,23 +1,15 @@
-import {
-  BookOutlined,
-  CloudUploadOutlined,
-  CompassOutlined,
-  HomeOutlined,
-  LoginOutlined,
-  PlusOutlined,
-  UserOutlined,
-} from '@ant-design/icons';
-import { Avatar, Button, Dropdown, Layout, Menu, Space, Typography } from 'antd';
+import { LoginOutlined } from '@ant-design/icons';
+import { Avatar, Button, Dropdown, Space, Typography } from 'antd';
 import { useEffect } from 'react';
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useMe } from '../api/hooks';
 import { useAuthStore } from '../store/auth';
 
 const navItems = [
-  { key: '/', icon: <HomeOutlined />, label: <Link to="/">首页</Link> },
-  { key: '/resources', icon: <BookOutlined />, label: <Link to="/resources">资源库</Link> },
-  { key: '/demands', icon: <CompassOutlined />, label: <Link to="/demands">求资源</Link> },
-  { key: '/profile', icon: <UserOutlined />, label: <Link to="/profile">个人中心</Link> },
+  { to: '/', label: '首页' },
+  { to: '/resources', label: '资源库' },
+  { to: '/demands', label: '求资源' },
+  { to: '/profile', label: '个人中心' },
 ];
 
 function selectedKey(pathname: string) {
@@ -39,32 +31,21 @@ export default function AppLayout() {
   }, [meQuery.data, setUser]);
 
   return (
-    <Layout className="app-shell">
-      <header className="topbar">
-        <Link className="brand" to="/">
-          <span className="brand-mark">
-            <BookOutlined />
-          </span>
-          <span className="brand-name">
-            资源分享论坛
-            <span className="brand-subtitle">User Web Console</span>
-          </span>
+    <div className="app-shell">
+      <header className="header">
+        <Link className="logo" to="/">
+          资源分享论坛
         </Link>
 
-        <Menu
-          className="topbar-menu"
-          mode="horizontal"
-          selectedKeys={[selectedKey(location.pathname)]}
-          items={navItems}
-        />
+        <nav className="nav" aria-label="前台导航">
+          {navItems.map((item) => (
+            <NavLink key={item.to} to={item.to} end={item.to === '/'} className={selectedKey(location.pathname) === item.to ? 'active' : undefined}>
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+        </nav>
 
-        <div className="topbar-actions">
-          <Button icon={<CloudUploadOutlined />} onClick={() => navigate('/publish-resource')}>
-            发布资源
-          </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/publish-demand')}>
-            发布求资源
-          </Button>
+        <div className="user-bar">
           {activeUser ? (
             <Dropdown
               menu={{
@@ -82,8 +63,10 @@ export default function AppLayout() {
                 ],
               }}
             >
-              <Space style={{ cursor: 'pointer' }}>
-                <Avatar src={activeUser.avatar} />
+              <Space className="user-trigger">
+                <Avatar className="avatar" src={activeUser.avatar || undefined}>
+                  {activeUser.nickname?.slice(0, 1)}
+                </Avatar>
                 <Typography.Text strong>{activeUser.nickname}</Typography.Text>
               </Space>
             </Dropdown>
@@ -94,9 +77,9 @@ export default function AppLayout() {
           )}
         </div>
       </header>
-      <main className="page">
+      <main className="container">
         <Outlet />
       </main>
-    </Layout>
+    </div>
   );
 }

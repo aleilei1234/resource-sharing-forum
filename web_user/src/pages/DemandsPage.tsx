@@ -1,49 +1,63 @@
 import { PlusOutlined } from '@ant-design/icons';
-import { Button, Col, Empty, Pagination, Row, Spin } from 'antd';
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Button, Empty, Pagination, Spin } from 'antd';
+import { useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useDemands } from '../api/hooks';
 import DemandCard from '../components/DemandCard';
 import ListingFilter from '../components/ListingFilter';
 import type { ListParams } from '../types';
+import { demandListParamsFromSearch, listParamsToSearchParams } from '../utils/listParams';
 
 export default function DemandsPage() {
   const navigate = useNavigate();
-  const [params, setParams] = useState<ListParams>({ page: 1, pageSize: 6, sort: 'latest' });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const searchKey = searchParams.toString();
+  const params = useMemo(() => demandListParamsFromSearch(searchParams), [searchKey, searchParams]);
+  const updateParams = (next: ListParams | ((prev: ListParams) => ListParams)) => {
+    const resolved = typeof next === 'function' ? next(params) : next;
+    setSearchParams(listParamsToSearchParams(resolved, 'demands'), { replace: true });
+  };
+
   const demandsQuery = useDemands(params);
   const items = demandsQuery.data?.items || [];
 
   return (
     <>
-      <div className="section-head">
-        <div>
-          <p className="section-kicker">REQUEST BOARD</p>
-          <h1 className="section-title">求资源列表</h1>
-        </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/publish-demand')}>
+      <div className="page-header">
+        <h1>求资源</h1>
+        <Button className="publish-btn" type="primary" icon={<PlusOutlined />} onClick={() => navigate('/publish-demand')}>
           发布求资源
         </Button>
       </div>
 
-      <ListingFilter mode="demands" value={params} onChange={setParams} />
+      <ListingFilter mode="demands" value={params} onChange={updateParams} />
 
-      <Spin spinning={demandsQuery.isLoading}>
-        <Row gutter={[16, 16]}>
-          {items.map((demand) => (
-            <Col xs={24} md={12} key={demand.id}>
-              <DemandCard demand={demand} />
-            </Col>
-          ))}
-        </Row>
-        {!items.length && !demandsQuery.isLoading && <Empty description="暂无匹配求资源" style={{ marginTop: 40 }} />}
-      </Spin>
+      <div className="card">
+        <div className="card-body">
+          <div className="sort-bar">
+            <div>共 {demandsQuery.data?.total || 0} 条求资源</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title">求资源列表</div>
+        <Spin spinning={demandsQuery.isLoading}>
+          <div className="card-body" style={{ padding: 0 }}>
+            {items.map((demand) => (
+              <DemandCard key={demand.id} demand={demand} />
+            ))}
+            {!items.length && !demandsQuery.isLoading && <Empty description="暂无匹配求资源" style={{ padding: '40px 0' }} />}
+          </div>
+        </Spin>
+      </div>
 
       <Pagination
-        style={{ marginTop: 22, textAlign: 'right' }}
+        className="page-pagination"
         current={params.page}
         pageSize={params.pageSize}
         total={demandsQuery.data?.total || 0}
-        onChange={(page, pageSize) => setParams((prev) => ({ ...prev, page, pageSize }))}
+        onChange={(page, pageSize) => updateParams((prev) => ({ ...prev, page, pageSize }))}
       />
     </>
   );

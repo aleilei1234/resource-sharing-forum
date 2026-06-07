@@ -1,5 +1,5 @@
 import { SendOutlined } from '@ant-design/icons';
-import { Avatar, Button, Form, Input, List, Space, Tag, Typography, message } from 'antd';
+import { Button, Form, Input, Tag, message } from 'antd';
 import { useAddComment } from '../api/hooks';
 import type { Comment } from '../types';
 
@@ -14,13 +14,9 @@ export default function CommentPanel({ kind, id, comments }: Props) {
   const addComment = useAddComment(kind, id);
 
   return (
-    <section style={{ marginTop: 20 }}>
-      <div className="section-head">
-        <div>
-          <p className="section-kicker">DISCUSSION</p>
-          <h2 className="section-title">{kind === 'resources' ? '评论区' : '回答区'}</h2>
-        </div>
-      </div>
+    <section className="card comment-panel">
+      <div className="card-title">{kind === 'resources' ? '评论与回复' : '回答列表'}</div>
+      <div className="card-body">
       <Form
         form={form}
         onFinish={async ({ content }) => {
@@ -30,40 +26,38 @@ export default function CommentPanel({ kind, id, comments }: Props) {
         }}
       >
         <Form.Item name="content" rules={[{ required: true, message: '请输入内容' }, { min: 5, message: '至少输入 5 个字' }]}>
-          <Input.TextArea rows={4} placeholder={kind === 'resources' ? '写下你的使用反馈或补充说明' : '分享资源链接、附件说明或解决思路'} />
+          <Input.TextArea className="comment-input" rows={4} placeholder={kind === 'resources' ? '请输入评论内容' : '分享资源链接、附件说明或解决思路'} />
         </Form.Item>
         <Button type="primary" htmlType="submit" icon={<SendOutlined />} loading={addComment.isPending}>
-          发布
+          {kind === 'resources' ? '发表评论' : '提交回答'}
         </Button>
       </Form>
 
-      <List
-        style={{ marginTop: 18 }}
-        dataSource={comments}
-        itemLayout="vertical"
-        renderItem={(item) => (
-          <List.Item>
-            <List.Item.Meta
-              avatar={<Avatar>{item.author.slice(0, 1)}</Avatar>}
-              title={
-                <Space>
-                  <Typography.Text strong>{item.author}</Typography.Text>
-                  {item.mine && <Tag color="green">我</Tag>}
-                  {item.accepted && <Tag color="blue">已采纳</Tag>}
-                  <Typography.Text type="secondary">{item.date}</Typography.Text>
-                </Space>
-              }
-              description={item.content}
-            />
-            {item.replies?.map((reply) => (
-              <div key={reply.id} style={{ marginLeft: 44, marginTop: 8, color: '#66746c' }}>
-                <Typography.Text strong>{reply.author}：</Typography.Text>
-                {reply.content}
+      <div style={{ marginTop: 14 }}>
+        {comments.map((item) => (
+          <div className="comment-item" key={item.id}>
+            <div className="comment-user">
+              <span className="comment-avatar">{item.author.slice(0, 1)}</span>
+              <span className="comment-name">{item.author}</span>
+              {item.mine && <Tag color="green">我</Tag>}
+              {item.accepted && <Tag color="blue">已采纳</Tag>}
+              <span className="comment-date">{item.date}</span>
+            </div>
+            <div className="comment-content">{item.content}</div>
+            {!!item.replies?.length && (
+              <div className="reply-box">
+                {item.replies.map((reply) => (
+                  <div className="reply-item" key={reply.id}>
+                    <strong>{reply.author}：</strong>
+                    {reply.content}
+                  </div>
+                ))}
               </div>
-            ))}
-          </List.Item>
-        )}
-      />
+            )}
+          </div>
+        ))}
+      </div>
+      </div>
     </section>
   );
 }

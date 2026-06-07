@@ -221,7 +221,7 @@ CREATE TABLE IF NOT EXISTS resource_info (
     FULLTEXT KEY ft_resource_search (title, summary, description),
     CONSTRAINT fk_resource_publisher FOREIGN KEY (publisher_id) REFERENCES member_profile (id),
     CONSTRAINT fk_resource_category FOREIGN KEY (category_id) REFERENCES resource_category (id),
-    CONSTRAINT ck_resource_status CHECK (status IN ('DRAFT', 'PENDING_REVIEW', 'PUBLISHED', 'REJECTED', 'OFFLINE', 'COPYRIGHT_DOWN', 'DELETED')),
+    CONSTRAINT ck_resource_status CHECK (status IN ('DRAFT', 'PENDING_REVIEW', 'PUBLISHED', 'REJECTED', 'REVIEWING_RISK', 'OFFLINE', 'COPYRIGHT_DOWN', 'DELETED')),
     CONSTRAINT ck_resource_type CHECK (resource_type IN ('DOCUMENT', 'SOFTWARE', 'SOURCE_CODE', 'MATERIAL', 'COURSE', 'TEMPLATE', 'LINK')),
     CONSTRAINT ck_resource_rating CHECK (average_rating >= 0 AND average_rating <= 5)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -301,7 +301,7 @@ CREATE TABLE IF NOT EXISTS resource_audit_record (
     KEY idx_audit_auditor_time (auditor_id, audit_time),
     CONSTRAINT fk_audit_resource FOREIGN KEY (resource_id) REFERENCES resource_info (id),
     CONSTRAINT fk_audit_auditor FOREIGN KEY (auditor_id) REFERENCES administrator_profile (id),
-    CONSTRAINT ck_audit_result CHECK (audit_result IN ('APPROVED', 'REJECTED', 'OFFLINE', 'RESTORED'))
+    CONSTRAINT ck_audit_result CHECK (audit_result IN ('APPROVED', 'REJECTED', 'OFFLINE', 'RESTORED', 'RISK_REVIEW', 'COPYRIGHT_DOWN', 'DELETED'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS resource_status_log (
