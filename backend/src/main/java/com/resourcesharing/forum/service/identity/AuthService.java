@@ -25,7 +25,7 @@ import java.util.Map;
 public class AuthService {
     private static final long DEFAULT_ACCOUNT_ID = 1L;
     private static final long DEFAULT_MEMBER_ID = 1L;
-    private static final String ACCOUNT_TEMPORARILY_LOCKED = "\u7490\ufe40\u5f7f\u6d93\u5b58\u6902\u95bf\u4f78\u757e";
+    private static final String ACCOUNT_TEMPORARILY_LOCKED = "\u8d26\u53f7\u4e34\u65f6\u9501\u5b9a";
 
     private final TxSupport txSupport;
     private final ValueSupport values;

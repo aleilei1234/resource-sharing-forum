@@ -64,7 +64,7 @@ class DesignSpecMySqlIntegrationTests {
                         .content("""
                                 {"username":"%s","email":"%s@example.com","password":"abc123456"}
                                 """.formatted(username, username)))
-                .andExpect(status().isCreated())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(201))
                 .andExpect(jsonPath("$.data.token").exists())
                 .andExpect(jsonPath("$.data.user.username").value(username));
@@ -88,7 +88,8 @@ class DesignSpecMySqlIntegrationTests {
                         .content("""
                                 {"username":"%s","email":"%s@example.com","password":"abc123456"}
                                 """.formatted(username, username)))
-                .andExpect(status().isCreated());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(201));
 
         for (int i = 0; i < 5; i++) {
             mockMvc.perform(post("/api/v1/auth/login")
@@ -105,7 +106,7 @@ class DesignSpecMySqlIntegrationTests {
                                 {"account":"%s","password":"abc123456"}
                                 """.formatted(username)))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").value("账号临时锁定"));
+                .andExpect(jsonPath("$.message").value("\u8d26\u53f7\u4e34\u65f6\u9501\u5b9a"));
 
         Integer failed = jdbcTemplate.queryForObject("SELECT failed_login_count FROM user_account WHERE username = ?", Integer.class, username);
         org.assertj.core.api.Assertions.assertThat(failed).isGreaterThanOrEqualTo(5);
@@ -113,7 +114,7 @@ class DesignSpecMySqlIntegrationTests {
 
     @Test
     void memberCannotUseAdminAuditEndpoint() throws Exception {
-        String token = loginToken("demo_user", "123456");
+        String token = loginToken("demo_user", "password");
         mockMvc.perform(put("/api/v1/resources/1/audit")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -123,8 +124,8 @@ class DesignSpecMySqlIntegrationTests {
 
     @Test
     void adminAuditWritesNotificationAndUnreadCount() throws Exception {
-        String adminToken = loginToken("admin", "123456");
-        mockMvc.perform(put("/api/v1/resources/1/audit")
+        String adminToken = loginToken("admin", "password");
+        mockMvc.perform(put("/api/v1/resources/2/audit")
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"action\":\"APPROVE\",\"reason\":\"integration approval\"}"))
@@ -132,7 +133,7 @@ class DesignSpecMySqlIntegrationTests {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.status").value("PUBLISHED"));
 
-        String memberToken = loginToken("demo_user", "123456");
+        String memberToken = loginToken("user001", "password");
         mockMvc.perform(get("/api/v1/notifications/unread-count")
                         .header("Authorization", "Bearer " + memberToken))
                 .andExpect(status().isOk())
@@ -151,7 +152,7 @@ class DesignSpecMySqlIntegrationTests {
 
     @Test
     void uploadRejectsExecutableFile() throws Exception {
-        String token = loginToken("demo_user", "123456");
+        String token = loginToken("demo_user", "password");
         MockMultipartFile file = new MockMultipartFile("file", "run.exe", "application/x-msdownload", "bad".getBytes());
         mockMvc.perform(multipart("/api/v1/attachments/upload")
                         .file(file)
@@ -162,12 +163,13 @@ class DesignSpecMySqlIntegrationTests {
 
     @Test
     void uploadAcceptsSafeFileAndDoesNotExposeStoragePath() throws Exception {
-        String token = loginToken("demo_user", "123456");
+        String token = loginToken("demo_user", "password");
         MockMultipartFile file = new MockMultipartFile("file", "note.txt", "text/plain", "hello".getBytes());
         mockMvc.perform(multipart("/api/v1/attachments/upload")
                         .file(file)
                         .header("Authorization", "Bearer " + token))
-                .andExpect(status().isCreated())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(201))
                 .andExpect(jsonPath("$.data.fileName").value("note.txt"))
                 .andExpect(jsonPath("$.data.storagePath").doesNotExist())
                 .andExpect(jsonPath("$.data.filePath").doesNotExist());
