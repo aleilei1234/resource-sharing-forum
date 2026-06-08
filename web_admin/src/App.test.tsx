@@ -63,6 +63,7 @@ describe('Admin app shell', () => {
     const approvedRow = screen.getByText('UI设计全套模板').closest('tr') as HTMLTableRowElement;
     fireEvent.click(within(approvedRow).getByRole('button', { name: '通过审核' }));
     expect(within(approvedRow).getByText('已通过')).toBeInTheDocument();
+    expect(screen.queryByText('R001 已通过审核')).not.toBeInTheDocument();
 
     unmount();
     render(<App />);

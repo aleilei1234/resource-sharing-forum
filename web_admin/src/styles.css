@@ -95,16 +95,6 @@ textarea {
   overflow: auto;
 }
 
-.notice {
-  margin-bottom: 12px;
-  padding: 9px 12px;
-  color: #1b5e20;
-  background: #e8f5e9;
-  border: 1px solid #c8e6c9;
-  border-radius: 4px;
-  font-size: 13px;
-}
-
 .tab-head {
   display: flex;
   border-bottom: 1px solid #ccc;
@@ -150,6 +140,7 @@ textarea {
 
 table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 13px;
   background: #fff;
@@ -172,6 +163,12 @@ th {
 td:nth-child(2),
 td:nth-child(3) {
   text-align: left;
+}
+
+th:last-child,
+td:last-child {
+  width: 176px;
+  white-space: nowrap;
 }
 
 .btn {
@@ -216,6 +213,11 @@ td:nth-child(3) {
 }
 
 .muted {
+  display: inline-flex;
+  min-width: 64px;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
   color: #8a8a8a;
   font-size: 12px;
 }

@@ -134,9 +134,8 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
 function AdminShell({ onLogout }: { onLogout: () => void }) {
   const navigate = useNavigate();
   const [modal, setModal] = useState<ModalState>(null);
-  const [notice, setNotice] = useState('');
+  const setNotice = (_message: string) => {};
   const openModal = (nextModal: ModalState) => {
-    setNotice('');
     setModal(nextModal);
   };
 
@@ -167,7 +166,6 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
           ))}
         </aside>
         <main className="main">
-          {notice && <div className="notice">{notice}</div>}
           <Routes>
             <Route path="/" element={<ContentPage openModal={openModal} setNotice={setNotice} />} />
             <Route path="/users" element={<UsersPage openModal={openModal} setNotice={setNotice} />} />
@@ -182,8 +180,7 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
       <ReasonModal
         modal={modal}
         onClose={() => setModal(null)}
-        onConfirm={(message) => {
-          setNotice(message);
+        onConfirm={() => {
           setModal(null);
         }}
       />
