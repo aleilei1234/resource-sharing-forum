@@ -105,7 +105,7 @@ class DeploymentScriptsTest {
 
         assertThat(result.exitCode()).isNotZero();
         assertThat(result.output()).contains("Environment file not found");
-        assertThat(result.output()).contains(callerOnlyEnvName);
+        assertThat(result.output().replaceAll("\\s+", "")).contains(callerOnlyEnvName);
         assertThat(result.output()).doesNotContain("Environment validation passed");
     }
 

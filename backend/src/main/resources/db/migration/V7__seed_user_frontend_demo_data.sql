@@ -300,7 +300,7 @@ ON DUPLICATE KEY UPDATE
     deleted_at = NULL;
 
 INSERT INTO login_record (
-    id, account_id, login_account, result, fail_reason, login_ip, user_agent, create_time
+    id, account_id, login_account, result, fail_reason, login_ip, user_agent, created_at
 ) VALUES
     (10, 1, 'demo_user', 'SUCCESS', NULL, '192.168.1.22', 'Chrome / Windows', DATE_SUB(NOW(3), INTERVAL 1 DAY)),
     (11, 1, 'demo_user', 'SUCCESS', NULL, '192.168.1.18', 'Edge / Windows', DATE_SUB(NOW(3), INTERVAL 2 DAY))
@@ -309,4 +309,4 @@ ON DUPLICATE KEY UPDATE
     fail_reason = VALUES(fail_reason),
     login_ip = VALUES(login_ip),
     user_agent = VALUES(user_agent),
-    create_time = VALUES(create_time);
+    created_at = VALUES(created_at);

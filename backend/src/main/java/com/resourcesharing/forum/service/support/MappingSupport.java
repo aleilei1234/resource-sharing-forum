@@ -70,7 +70,7 @@ public class MappingSupport {
                     "commentCount", rs.getInt("comment_count"),
                     "score", rs.getBigDecimal("average_rating") == null ? 0 : rs.getBigDecimal("average_rating").doubleValue(),
                     "ratingCount", rs.getInt("rating_count"),
-                    "date", values.date(rs.getObject("create_time", java.time.LocalDateTime.class)),
+                    "date", values.date(rs.getObject("created_at", java.time.LocalDateTime.class)),
                     "publishedAt", values.date(rs.getObject("published_time", java.time.LocalDateTime.class)),
                     "tags", lookup.resourceTags(id),
                     "attachments", attachments,
@@ -98,7 +98,7 @@ public class MappingSupport {
                 "replyCount", rs.getInt("answer_count"),
                 "commentCount", rs.getInt("comment_count"),
                 "author", rs.getString("author_name"),
-                "date", values.date(rs.getObject("create_time", java.time.LocalDateTime.class)),
+                "date", values.date(rs.getObject("created_at", java.time.LocalDateTime.class)),
                 "status", rs.getString("status"),
                 "tags", lookup.requestTags(rs.getLong("id")),
                 "expectedFormat", firstNonBlank(rs.getString("expected_format"), "unlimited"),
@@ -115,7 +115,7 @@ public class MappingSupport {
                 "resourceId", rs.getObject("resource_id"),
                 "externalUrl", rs.getString("external_url"),
                 "accepted", rs.getInt("is_accepted") == 1,
-                "date", values.date(rs.getObject("create_time", java.time.LocalDateTime.class))
+                "date", values.date(rs.getObject("created_at", java.time.LocalDateTime.class))
         );
     }
 
@@ -129,7 +129,7 @@ public class MappingSupport {
                     "parentId", rs.getObject("parent_id"),
                     "author", rs.getString("nickname"),
                     "content", rs.getString("content"),
-                    "date", values.date(rs.getObject("create_time", java.time.LocalDateTime.class)),
+                    "date", values.date(rs.getObject("created_at", java.time.LocalDateTime.class)),
                     "mine", Objects.equals(rs.getLong("member_id"), memberId),
                     "likeCount", rs.getInt("like_count"),
                     "liked", lookup.interactionActive(memberId, "COMMENT", rs.getLong("id"), "LIKE"),

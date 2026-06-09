@@ -244,7 +244,7 @@ class RequestRewardServiceTest {
         assertThat(listSql).contains(
                 "rp.status = ?",
                 "rp.reward_points > 500 AND rp.reward_points <= 2000",
-                "ORDER BY rp.create_time DESC, rp.id DESC"
+                "ORDER BY rp.created_at DESC, rp.id DESC"
         );
         assertThat(jdbc.argsFor(listSql)).contains("RESOLVED");
     }

@@ -59,7 +59,7 @@ public class UserCenterService {
                     LEFT JOIN resource_category c2 ON c2.id = r.category_id
                     LEFT JOIN resource_category c1 ON c1.id = c2.parent_id
                     %s
-                    ORDER BY r.update_time DESC, r.id DESC
+                    ORDER BY r.updated_at DESC, r.id DESC
                     LIMIT ?, ?
                     """.formatted(where), mappings.resourceMapper(accountId), args.toArray());
             return new PageResult<>(total, list, page, size);
@@ -97,7 +97,7 @@ public class UserCenterService {
                     LEFT JOIN resource_category c2 ON c2.id = rp.category_id
                     LEFT JOIN resource_category c1 ON c1.id = c2.parent_id
                     %s
-                    ORDER BY rp.update_time DESC, rp.id DESC
+                    ORDER BY rp.updated_at DESC, rp.id DESC
                     LIMIT ?, ?
                     """.formatted(where), mappings.requestMapper(), args.toArray());
             return new PageResult<>(total, list, page, size);
@@ -128,11 +128,11 @@ public class UserCenterService {
             args.add(size);
             List<Map<String, Object>> list = jdbc.query("""
                     SELECT rr.id, rr.request_id, rr.content, rr.resource_id, rr.external_url,
-                           rr.status, rr.is_accepted, rr.create_time, rp.title AS request_title
+                           rr.status, rr.is_accepted, rr.created_at, rp.title AS request_title
                     FROM request_reply rr
                     JOIN request_post rp ON rp.id = rr.request_id
                     %s
-                    ORDER BY rr.create_time DESC, rr.id DESC
+                    ORDER BY rr.created_at DESC, rr.id DESC
                     LIMIT ?, ?
                     """.formatted(where), (rs, rowNum) -> values.map(
                     "id", rs.getLong("id"),
@@ -143,7 +143,7 @@ public class UserCenterService {
                     "externalUrl", rs.getString("external_url"),
                     "status", rs.getString("status"),
                     "accepted", rs.getInt("is_accepted") == 1,
-                    "date", values.date(rs.getObject("create_time", LocalDateTime.class))
+                    "date", values.date(rs.getObject("created_at", LocalDateTime.class))
             ), args.toArray());
             return new PageResult<>(total, list, page, size);
         } catch (DataAccessException ignored) {
@@ -174,10 +174,10 @@ public class UserCenterService {
                     WHERE member_id = ? AND deleted_at IS NULL
                     """, Long.class, memberId);
             List<Map<String, Object>> list = jdbc.query("""
-                    SELECT id, resource_id, attachment_id, file_name, status, fail_reason, create_time
+                    SELECT id, resource_id, attachment_id, file_name, status, fail_reason, created_at
                     FROM download_record
                     WHERE member_id = ? AND deleted_at IS NULL
-                    ORDER BY create_time DESC, id DESC
+                    ORDER BY created_at DESC, id DESC
                     LIMIT ?, ?
                     """, (rs, rowNum) -> values.map(
                     "id", rs.getLong("id"),
@@ -186,7 +186,7 @@ public class UserCenterService {
                     "fileName", rs.getString("file_name"),
                     "status", rs.getString("status"),
                     "failReason", rs.getString("fail_reason"),
-                    "downloadTime", String.valueOf(rs.getObject("create_time", LocalDateTime.class))
+                    "downloadTime", String.valueOf(rs.getObject("created_at", LocalDateTime.class))
             ), memberId, (page - 1) * size, size);
             return new PageResult<>(total, list, page, size);
         } catch (DataAccessException ignored) {
@@ -211,10 +211,10 @@ public class UserCenterService {
                     WHERE account_id = ?
                     """, Long.class, accountId);
             List<Map<String, Object>> list = jdbc.query("""
-                    SELECT id, login_ip, user_agent, result, fail_reason, create_time
+                    SELECT id, login_ip, user_agent, result, fail_reason, created_at
                     FROM login_record
                     WHERE account_id = ?
-                    ORDER BY create_time DESC, id DESC
+                    ORDER BY created_at DESC, id DESC
                     LIMIT ?, ?
                     """, (rs, rowNum) -> values.map(
                     "id", rs.getLong("id"),
@@ -222,7 +222,7 @@ public class UserCenterService {
                     "device", values.firstNonBlank(rs.getString("user_agent"), "browser"),
                     "result", rs.getString("result"),
                     "location", values.firstNonBlank(rs.getString("fail_reason"), rs.getString("result")),
-                    "time", String.valueOf(rs.getObject("create_time", LocalDateTime.class))
+                    "time", String.valueOf(rs.getObject("created_at", LocalDateTime.class))
             ), accountId, (page - 1) * size, size);
             return new PageResult<>(total == null ? 0 : total, list, page, size);
         } catch (DataAccessException ignored) {
@@ -263,7 +263,7 @@ public class UserCenterService {
                     WHERE ui.member_id = ? AND ui.target_type = 'RESOURCE' AND ui.action_type = ?
                       AND ui.status = 'ACTIVE' AND ui.deleted_at IS NULL
                       AND r.deleted_at IS NULL
-                    ORDER BY ui.update_time DESC, ui.id DESC
+                    ORDER BY ui.updated_at DESC, ui.id DESC
                     LIMIT ?, ?
                     """, mappings.resourceMapper(accountId), memberId, actionType, (page - 1) * size, size);
             return new PageResult<>(total, list, page, size);

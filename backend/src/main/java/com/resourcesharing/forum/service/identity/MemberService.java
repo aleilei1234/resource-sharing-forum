@@ -171,10 +171,10 @@ public class MemberService {
                 """, Long.class, memberId);
         List<Map<String, Object>> list = jdbc.query("""
                 SELECT id, flow_type, scene, points_change, frozen_change, before_points, after_points,
-                       before_frozen_points, after_frozen_points, related_type, related_id, description, create_time
+                       before_frozen_points, after_frozen_points, related_type, related_id, description, created_at
                 FROM point_flow
                 WHERE member_id = ? AND deleted_at IS NULL
-                ORDER BY create_time DESC, id DESC
+                ORDER BY created_at DESC, id DESC
                 LIMIT ?, ?
                 """, (rs, rowNum) -> values.map(
                 "id", rs.getLong("id"),
@@ -189,7 +189,7 @@ public class MemberService {
                 "relatedType", rs.getString("related_type") == null ? "" : rs.getString("related_type"),
                 "relatedId", rs.getObject("related_id") == null ? 0L : rs.getLong("related_id"),
                 "description", rs.getString("description") == null ? "" : rs.getString("description"),
-                "createTime", String.valueOf(rs.getObject("create_time", LocalDateTime.class))
+                "createTime", String.valueOf(rs.getObject("created_at", LocalDateTime.class))
         ), memberId, (safePage - 1) * safeSize, safeSize);
         return new PageResult<>(total == null ? 0 : total, list, safePage, safeSize);
     }

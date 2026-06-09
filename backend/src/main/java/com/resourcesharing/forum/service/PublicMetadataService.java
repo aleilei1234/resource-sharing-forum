@@ -117,7 +117,7 @@ public class PublicMetadataService {
                       AND (offline_time IS NULL OR offline_time > NOW(3))
                     """, Long.class);
             List<Map<String, Object>> list = jdbc.query("""
-                    SELECT id, title, content, publish_time, create_time
+                    SELECT id, title, content, publish_time, created_at
                     FROM platform_announcement
                     WHERE status = 'PUBLISHED' AND deleted_at IS NULL
                       AND (publish_time IS NULL OR publish_time <= NOW(3))
@@ -128,7 +128,7 @@ public class PublicMetadataService {
                     "id", rs.getLong("id"),
                     "title", rs.getString("title"),
                     "content", rs.getString("content"),
-                    "publishTime", time(rs.getObject("publish_time", LocalDateTime.class), rs.getObject("create_time", LocalDateTime.class))
+                    "publishTime", time(rs.getObject("publish_time", LocalDateTime.class), rs.getObject("created_at", LocalDateTime.class))
             ), (page - 1) * size, size);
             return new PageResult<>(total == null ? 0 : total, list, page, size);
         } catch (DataAccessException ignored) {

@@ -84,11 +84,11 @@ public class AdminDashboardService {
         args.add((page - 1) * size);
         args.add(size);
         List<Map<String, Object>> list = jdbc.query("""
-                SELECT mp.id, mp.nickname, ua.id AS account_id, ua.username, ua.email, ua.status, ua.create_time
+                SELECT mp.id, mp.nickname, ua.id AS account_id, ua.username, ua.email, ua.status, ua.created_at
                 FROM member_profile mp
                 JOIN user_account ua ON ua.id = mp.account_id
                 %s
-                ORDER BY ua.create_time DESC, mp.id DESC
+                ORDER BY ua.created_at DESC, mp.id DESC
                 LIMIT ?, ?
                 """.formatted(where), (rs, rowNum) -> values.map(
                 "id", String.valueOf(rs.getLong("id")),
@@ -99,7 +99,7 @@ public class AdminDashboardService {
                 "email", rs.getString("email"),
                 "rawStatus", rs.getString("status"),
                 "status", accountStatusLabel(rs.getString("status")),
-                "registeredAt", values.date(rs.getObject("create_time", java.time.LocalDateTime.class))
+                "registeredAt", values.date(rs.getObject("created_at", java.time.LocalDateTime.class))
         ), args.toArray());
         return new PageResult<>(total, list, page, size);
     }
@@ -305,7 +305,7 @@ public class AdminDashboardService {
                 FROM resource_info r
                 JOIN member_profile mp ON mp.id = r.publisher_id
                 WHERE r.deleted_at IS NULL AND r.status IN (%s)
-                ORDER BY r.update_time DESC, r.id DESC
+                ORDER BY r.updated_at DESC, r.id DESC
                 LIMIT ?, ?
                 """.formatted(placeholders), (rs, rowNum) -> values.map(
                 "id", String.valueOf(rs.getLong("id")),
@@ -333,7 +333,7 @@ public class AdminDashboardService {
                 FROM request_post rp
                 JOIN member_profile mp ON mp.id = rp.requester_id
                 WHERE rp.deleted_at IS NULL
-                ORDER BY rp.update_time DESC, rp.id DESC
+                ORDER BY rp.updated_at DESC, rp.id DESC
                 LIMIT ?, ?
                 """, (rs, rowNum) -> values.map(
                 "id", String.valueOf(rs.getLong("id")),
@@ -356,7 +356,7 @@ public class AdminDashboardService {
                 SELECT id, target_type, target_id, content, status
                 FROM comment_info
                 WHERE deleted_at IS NULL
-                ORDER BY update_time DESC, id DESC
+                ORDER BY updated_at DESC, id DESC
                 LIMIT ?, ?
                 """, (rs, rowNum) -> values.map(
                 "id", String.valueOf(rs.getLong("id")),
@@ -390,7 +390,7 @@ public class AdminDashboardService {
                 LEFT JOIN resource_info ri ON rc.target_type = 'RESOURCE' AND ri.id = rc.target_id
                 LEFT JOIN member_profile mp ON mp.id = rc.reporter_id
                 WHERE rc.deleted_at IS NULL AND %s
-                ORDER BY rc.create_time DESC, rc.id DESC
+                ORDER BY rc.created_at DESC, rc.id DESC
                 LIMIT ?, ?
                 """.formatted(predicate), (rs, rowNum) -> {
             String targetType = rs.getString("target_type");
@@ -440,7 +440,7 @@ public class AdminDashboardService {
                 FROM appeal_record ar
                 JOIN member_profile mp ON mp.id = ar.appellant_id
                 WHERE ar.deleted_at IS NULL
-                ORDER BY ar.create_time DESC, ar.id DESC
+                ORDER BY ar.created_at DESC, ar.id DESC
                 LIMIT ?, ?
                 """, (rs, rowNum) -> values.map(
                 "id", String.valueOf(rs.getLong("id")),

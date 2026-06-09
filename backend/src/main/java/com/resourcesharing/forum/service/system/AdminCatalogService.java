@@ -84,7 +84,7 @@ public class AdminCatalogService {
         args.add((page - 1) * size);
         args.add(size);
         List<Map<String, Object>> list = jdbc.query("""
-                SELECT c.id, c.parent_id, c.category_name, c.level_no, c.status, c.sort_order, c.create_time,
+                SELECT c.id, c.parent_id, c.category_name, c.level_no, c.status, c.sort_order, c.created_at,
                        p.category_name AS parent_name
                 FROM resource_category c
                 LEFT JOIN resource_category p ON p.id = c.parent_id
@@ -100,7 +100,7 @@ public class AdminCatalogService {
                 "parent", rs.getString("parent_name") == null ? "-" : rs.getString("parent_name"),
                 "status", rs.getString("status"),
                 "sortOrder", rs.getInt("sort_order"),
-                "date", values.date(rs.getObject("create_time", java.time.LocalDateTime.class))
+                "date", values.date(rs.getObject("created_at", java.time.LocalDateTime.class))
         ), args.toArray());
         return new PageResult<>(total, list, page, size);
     }
@@ -208,7 +208,7 @@ public class AdminCatalogService {
         args.add((page - 1) * size);
         args.add(size);
         List<Map<String, Object>> list = jdbc.query("""
-                SELECT id, tag_name, use_count, status, create_time
+                SELECT id, tag_name, use_count, status, created_at
                 FROM tag_info
                 %s
                 ORDER BY use_count DESC, id ASC
@@ -219,7 +219,7 @@ public class AdminCatalogService {
                 "tagName", rs.getString("tag_name"),
                 "useCount", rs.getInt("use_count"),
                 "status", rs.getString("status"),
-                "date", values.date(rs.getObject("create_time", java.time.LocalDateTime.class))
+                "date", values.date(rs.getObject("created_at", java.time.LocalDateTime.class))
         ), args.toArray());
         return new PageResult<>(total, list, page, size);
     }
@@ -415,7 +415,7 @@ public class AdminCatalogService {
             return values.map("id", categoryId, "status", "ENABLED");
         }
         return jdbc.queryForObject("""
-                SELECT c.id, c.parent_id, c.category_name, c.level_no, c.status, c.sort_order, c.create_time,
+                SELECT c.id, c.parent_id, c.category_name, c.level_no, c.status, c.sort_order, c.created_at,
                        p.category_name AS parent_name
                 FROM resource_category c
                 LEFT JOIN resource_category p ON p.id = c.parent_id
@@ -429,7 +429,7 @@ public class AdminCatalogService {
                 "parent", rs.getString("parent_name") == null ? "-" : rs.getString("parent_name"),
                 "status", rs.getString("status"),
                 "sortOrder", rs.getInt("sort_order"),
-                "date", values.date(rs.getObject("create_time", java.time.LocalDateTime.class))
+                "date", values.date(rs.getObject("created_at", java.time.LocalDateTime.class))
         ), categoryId);
     }
 
@@ -439,7 +439,7 @@ public class AdminCatalogService {
             return values.map("id", tagId, "status", "ENABLED");
         }
         return jdbc.queryForObject("""
-                SELECT id, tag_name, use_count, status, create_time
+                SELECT id, tag_name, use_count, status, created_at
                 FROM tag_info
                 WHERE id = ? AND deleted_at IS NULL
                 """, (rs, rowNum) -> values.map(
@@ -448,7 +448,7 @@ public class AdminCatalogService {
                 "tagName", rs.getString("tag_name"),
                 "useCount", rs.getInt("use_count"),
                 "status", rs.getString("status"),
-                "date", values.date(rs.getObject("create_time", java.time.LocalDateTime.class))
+                "date", values.date(rs.getObject("created_at", java.time.LocalDateTime.class))
         ), tagId);
     }
 

@@ -173,7 +173,7 @@ public class FileService {
         ensureResourceWritable(resourceId, accountId);
         int updated = jdbc.update("""
                 UPDATE file_attachment
-                SET owner_id = ?, status = 'NORMAL', update_time = NOW(3)
+                SET owner_id = ?, status = 'NORMAL', updated_at = NOW(3)
                 WHERE id = ? AND uploader_id = ? AND owner_type = 'RESOURCE' AND status = 'TEMP' AND deleted_at IS NULL
                 """, resourceId, attachmentId, accountId);
         if (updated == 0) {

@@ -42,10 +42,10 @@ public class AdminLogService {
         args.add((page - 1) * size);
         args.add(size);
         List<Map<String, Object>> list = jdbc.query("""
-                SELECT id, admin_id, operation_type, target_type, target_id, content, before_snapshot, after_snapshot, ip, create_time
+                SELECT id, admin_id, operation_type, target_type, target_id, content, before_snapshot, after_snapshot, ip, created_at
                 FROM admin_operation_log
                 %s
-                ORDER BY create_time DESC, id DESC
+                ORDER BY created_at DESC, id DESC
                 LIMIT ?, ?
                 """.formatted(where), (rs, rowNum) -> values.map(
                 "id", rs.getLong("id"),
@@ -60,8 +60,8 @@ public class AdminLogService {
                 "after", rs.getString("after_snapshot"),
                 "result", "执行成功",
                 "ip", rs.getString("ip") == null ? "-" : rs.getString("ip"),
-                "date", values.date(rs.getObject("create_time", java.time.LocalDateTime.class)),
-                "time", String.valueOf(rs.getObject("create_time", java.time.LocalDateTime.class))
+                "date", values.date(rs.getObject("created_at", java.time.LocalDateTime.class)),
+                "time", String.valueOf(rs.getObject("created_at", java.time.LocalDateTime.class))
         ), args.toArray());
         return new PageResult<>(total, list, page, size);
     }

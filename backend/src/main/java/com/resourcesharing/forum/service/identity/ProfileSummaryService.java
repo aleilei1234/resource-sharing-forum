@@ -71,7 +71,7 @@ public class ProfileSummaryService {
                     LEFT JOIN resource_category c2 ON c2.id = r.category_id
                     LEFT JOIN resource_category c1 ON c1.id = c2.parent_id
                     WHERE r.publisher_id = ? AND r.deleted_at IS NULL
-                    ORDER BY r.update_time DESC, r.id DESC
+                    ORDER BY r.updated_at DESC, r.id DESC
                     LIMIT 10
                     """, mappings.resourceMapper(accountId), memberId);
         } catch (DataAccessException ignored) {
@@ -90,7 +90,7 @@ public class ProfileSummaryService {
                     LEFT JOIN resource_category c2 ON c2.id = rp.category_id
                     LEFT JOIN resource_category c1 ON c1.id = c2.parent_id
                     WHERE rp.requester_id = ? AND rp.deleted_at IS NULL
-                    ORDER BY rp.update_time DESC, rp.id DESC
+                    ORDER BY rp.updated_at DESC, rp.id DESC
                     LIMIT 10
                     """, mappings.requestMapper(), memberId);
         } catch (DataAccessException ignored) {
@@ -116,7 +116,7 @@ public class ProfileSummaryService {
                       AND ui.deleted_at IS NULL
                       AND r.status = 'PUBLISHED'
                       AND r.deleted_at IS NULL
-                    ORDER BY ui.update_time DESC, ui.id DESC
+                    ORDER BY ui.updated_at DESC, ui.id DESC
                     LIMIT 10
                     """, mappings.resourceMapper(accountId), memberId, actionType);
         } catch (DataAccessException ignored) {
@@ -127,17 +127,17 @@ public class ProfileSummaryService {
     private List<Map<String, Object>> messages(JdbcTemplate jdbc, Long memberId) {
         try {
             return jdbc.query("""
-                    SELECT id, title, content, is_read, create_time
+                    SELECT id, title, content, is_read, created_at
                     FROM system_notice
                     WHERE receiver_id = ? AND deleted_at IS NULL
-                    ORDER BY create_time DESC, id DESC
+                    ORDER BY created_at DESC, id DESC
                     LIMIT 10
                     """, (rs, rowNum) -> values.map(
                     "id", rs.getLong("id"),
                     "title", rs.getString("title"),
                     "content", rs.getString("content"),
                     "unread", rs.getInt("is_read") == 0,
-                    "date", values.date(rs.getObject("create_time", LocalDateTime.class))
+                    "date", values.date(rs.getObject("created_at", LocalDateTime.class))
             ), memberId);
         } catch (DataAccessException ignored) {
             return List.of();
@@ -147,17 +147,17 @@ public class ProfileSummaryService {
     private List<Map<String, Object>> loginLogs(JdbcTemplate jdbc, Long accountId) {
         try {
             return jdbc.query("""
-                    SELECT id, login_ip, user_agent, result, fail_reason, create_time
+                    SELECT id, login_ip, user_agent, result, fail_reason, created_at
                     FROM login_record
                     WHERE account_id = ?
-                    ORDER BY create_time DESC, id DESC
+                    ORDER BY created_at DESC, id DESC
                     LIMIT 10
                     """, (rs, rowNum) -> values.map(
                     "id", rs.getLong("id"),
                     "ip", values.firstNonBlank(rs.getString("login_ip"), "127.0.0.1"),
                     "device", values.firstNonBlank(rs.getString("user_agent"), "浏览器"),
                     "location", loginLocation(rs.getString("result"), rs.getString("fail_reason")),
-                    "time", String.valueOf(rs.getObject("create_time", LocalDateTime.class))
+                    "time", String.valueOf(rs.getObject("created_at", LocalDateTime.class))
             ), accountId);
         } catch (DataAccessException ignored) {
             return List.of();

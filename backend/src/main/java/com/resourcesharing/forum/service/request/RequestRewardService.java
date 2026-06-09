@@ -318,7 +318,7 @@ public class RequestRewardService {
                     FROM request_reply rr
                     JOIN member_profile mp ON mp.id = rr.replier_id
                     WHERE rr.request_id = ? AND rr.status = 'ACTIVE' AND rr.deleted_at IS NULL
-                    ORDER BY rr.is_accepted DESC, rr.create_time DESC
+                    ORDER BY rr.is_accepted DESC, rr.created_at DESC
                     LIMIT ?, ?
                     """, mappings.replyMapper(), requestId, (page - 1) * size, size);
             return new PageResult<>(total, list, page, size);
@@ -562,14 +562,14 @@ public class RequestRewardService {
                     WHERE target_type = ? AND target_id = ? AND status = 'ACTIVE' AND parent_id IS NULL AND deleted_at IS NULL
                     """, Long.class, targetType, targetId);
             List<Map<String, Object>> list = jdbc.query("""
-                    SELECT ci.id, ci.target_type, ci.target_id, ci.content, ci.create_time, ci.member_id, ci.parent_id, mp.nickname,
+                    SELECT ci.id, ci.target_type, ci.target_id, ci.content, ci.created_at, ci.member_id, ci.parent_id, mp.nickname,
                            (SELECT COUNT(*) FROM user_interaction ui
                             WHERE ui.target_type = 'COMMENT' AND ui.target_id = ci.id
                               AND ui.action_type = 'LIKE' AND ui.status = 'ACTIVE' AND ui.deleted_at IS NULL) AS like_count
                     FROM comment_info ci
                     JOIN member_profile mp ON mp.id = ci.member_id
                     WHERE ci.target_type = ? AND ci.target_id = ? AND ci.status = 'ACTIVE' AND ci.parent_id IS NULL AND ci.deleted_at IS NULL
-                    ORDER BY ci.create_time DESC
+                    ORDER BY ci.created_at DESC
                     LIMIT ?, ?
                     """, mappings.commentMapper(accountId), targetType, targetId, (page - 1) * size, size);
             return new PageResult<>(total, list, page, size);
@@ -635,9 +635,9 @@ public class RequestRewardService {
     private String requestOrderBy(String sort, String order) {
         String direction = "asc".equalsIgnoreCase(order) ? "ASC" : "DESC";
         return switch (sort) {
-            case "reply" -> "rp.answer_count %s, rp.create_time DESC, rp.id DESC".formatted(direction);
-            case "points" -> "rp.reward_points %s, rp.create_time DESC, rp.id DESC".formatted(direction);
-            default -> "rp.create_time %s, rp.id %s".formatted(direction, direction);
+            case "reply" -> "rp.answer_count %s, rp.created_at DESC, rp.id DESC".formatted(direction);
+            case "points" -> "rp.reward_points %s, rp.created_at DESC, rp.id DESC".formatted(direction);
+            default -> "rp.created_at %s, rp.id %s".formatted(direction, direction);
         };
     }
 

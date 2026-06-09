@@ -62,7 +62,7 @@ public class InteractionService {
             jdbc.update("""
                     INSERT INTO user_interaction(member_id, target_type, target_id, action_type, status)
                     VALUES (?, 'RESOURCE', ?, ?, 'ACTIVE')
-                    ON DUPLICATE KEY UPDATE status = IF(status = 'ACTIVE', 'CANCELLED', 'ACTIVE'), update_time = NOW(3)
+                    ON DUPLICATE KEY UPDATE status = IF(status = 'ACTIVE', 'CANCELLED', 'ACTIVE'), updated_at = NOW(3)
                     """, memberId, resourceId, actionType);
             jdbc.update("""
                     UPDATE resource_info r
@@ -201,7 +201,7 @@ public class InteractionService {
             jdbc.update("""
                     INSERT INTO user_interaction(member_id, target_type, target_id, action_type, status)
                     VALUES (?, 'COMMENT', ?, 'LIKE', 'ACTIVE')
-                    ON DUPLICATE KEY UPDATE status = IF(status = 'ACTIVE', 'CANCELLED', 'ACTIVE'), update_time = NOW(3)
+                    ON DUPLICATE KEY UPDATE status = IF(status = 'ACTIVE', 'CANCELLED', 'ACTIVE'), updated_at = NOW(3)
                     """, memberId, commentId);
             return comment(commentId, accountId);
         });
@@ -262,14 +262,14 @@ public class InteractionService {
                     WHERE target_type = ? AND target_id = ? AND status = 'ACTIVE' AND parent_id IS NULL AND deleted_at IS NULL
                     """, Long.class, targetType, targetId);
             List<Map<String, Object>> list = jdbc.query("""
-                    SELECT ci.id, ci.target_type, ci.target_id, ci.content, ci.create_time, ci.member_id, ci.parent_id, mp.nickname,
+                    SELECT ci.id, ci.target_type, ci.target_id, ci.content, ci.created_at, ci.member_id, ci.parent_id, mp.nickname,
                            (SELECT COUNT(*) FROM user_interaction ui
                             WHERE ui.target_type = 'COMMENT' AND ui.target_id = ci.id
                               AND ui.action_type = 'LIKE' AND ui.status = 'ACTIVE' AND ui.deleted_at IS NULL) AS like_count
                     FROM comment_info ci
                     JOIN member_profile mp ON mp.id = ci.member_id
                     WHERE ci.target_type = ? AND ci.target_id = ? AND ci.status = 'ACTIVE' AND ci.parent_id IS NULL AND ci.deleted_at IS NULL
-                    ORDER BY ci.create_time DESC
+                    ORDER BY ci.created_at DESC
                     LIMIT ?, ?
                     """, mappings.commentMapper(accountId), targetType, targetId, (page - 1) * size, size);
             return new PageResult<>(total, list, page, size);
@@ -285,7 +285,7 @@ public class InteractionService {
         }
         try {
             return jdbc.queryForObject("""
-                    SELECT ci.id, ci.target_type, ci.target_id, ci.content, ci.create_time, ci.member_id, ci.parent_id, mp.nickname,
+                    SELECT ci.id, ci.target_type, ci.target_id, ci.content, ci.created_at, ci.member_id, ci.parent_id, mp.nickname,
                            (SELECT COUNT(*) FROM user_interaction ui
                             WHERE ui.target_type = 'COMMENT' AND ui.target_id = ci.id
                               AND ui.action_type = 'LIKE' AND ui.status = 'ACTIVE' AND ui.deleted_at IS NULL) AS like_count
