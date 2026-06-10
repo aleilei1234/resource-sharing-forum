@@ -1,8 +1,7 @@
 import { message } from 'antd';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useDownloadAttachment, useRateResource, useResource, useResourceAction } from '../api/hooks';
-import { absoluteDownloadUrl } from '../api/endpoints';
+import { useCategories, useDownloadAttachment, useRateResource, useResource, useResourceAction } from '../api/hooks';
 import { ApiError } from '../components/ApiState';
 import CommentPanel from '../components/CommentPanel';
 import ReportModal from '../components/ReportModal';
@@ -13,11 +12,13 @@ export default function ResourceDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const resourceQuery = useResource(id);
+  const categoriesQuery = useCategories();
   const action = useResourceAction();
   const download = useDownloadAttachment();
   const rateResource = useRateResource();
   const [reportOpen, setReportOpen] = useState(false);
   const [reportTarget, setReportTarget] = useState<'RESOURCE' | 'COPYRIGHT'>('RESOURCE');
+  const [downloadError, setDownloadError] = useState('');
 
   if (resourceQuery.isLoading) {
     return <div className="container"><div className="card"><div className="card-body">加载中...</div></div></div>;
@@ -40,20 +41,19 @@ export default function ResourceDetailPage() {
   }
 
   const { resource, comments } = resourceQuery.data;
+  const categories = categoriesQuery.data || [];
   const shownRating = resource.userRating || Math.round(resource.score);
 
   async function downloadAttachment(attachment: ResourceAttachment) {
+    setDownloadError('');
     try {
-      const info = await download.mutateAsync(attachment.id);
-      if (info.downloadUrl) {
-        window.open(absoluteDownloadUrl(info.downloadUrl), '_blank', 'noopener,noreferrer');
-        message.success(`正在下载：${info.fileName || attachment.name}`);
-        return;
-      }
-      await action.mutateAsync({ id: resource.id, action: 'download', attachmentId: attachment.id });
-      message.success(`已请求下载：${attachment.name}`);
+      const file = await download.mutateAsync(attachment.id);
+      saveBlob(file.blob, file.fileName || attachment.name);
+      message.success(`正在下载：${file.fileName || attachment.name}`);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '接口调用失败');
+      const errorMessage = error instanceof Error ? error.message : '接口调用失败';
+      setDownloadError(errorMessage);
+      message.error(errorMessage);
     }
   }
 
@@ -80,7 +80,7 @@ export default function ResourceDetailPage() {
           </div>
 
           <div className="detail-meta">
-            <span>分类：{formatCategory(resource.category1, resource.category2)}</span>
+            <span>分类：{formatCategory(resource.category1, resource.category2, categories)}</span>
             <span>类型：{resource.type}</span>
             <span>发布者：{resource.author}</span>
             <span>发布时间：{resource.date}</span>
@@ -159,6 +159,7 @@ export default function ResourceDetailPage() {
           <div className="desc">{resource.detail || resource.description}</div>
 
           <div className="section-title">附件列表</div>
+          {downloadError && <div className="api-error-inline">{downloadError}</div>}
           {resource.attachments.map((attachment) => (
             <div className="attach-item" key={attachment.id}>
               <div className="attach-info">
@@ -174,7 +175,18 @@ export default function ResourceDetailPage() {
       </div>
 
       <CommentPanel kind="resources" id={resource.id} comments={comments} ownerName={resource.author} />
-      <ReportModal open={reportOpen} target={reportTarget} targetId={resource.id} onClose={() => setReportOpen(false)} />
+      <ReportModal open={reportOpen} target={reportTarget} targetId={resource.id} subjectTitle={resource.title} onClose={() => setReportOpen(false)} />
     </div>
   );
+}
+
+function saveBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName || 'attachment';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }

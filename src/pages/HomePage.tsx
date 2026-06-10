@@ -11,7 +11,8 @@ export default function HomePage() {
   const announcementsQuery = useAnnouncements({ page: 1, pageSize: 5 });
   const latest = latestQuery.data?.items || [];
   const hot = hotQuery.data?.items || [];
-  const recommended = (categoriesQuery.data || [])
+  const categories = categoriesQuery.data || [];
+  const recommended = categories
     .flatMap((parent) => parent.children.map((child) => ({ ...child, parentId: parent.id })))
     .slice(0, 6);
   const notices = announcementsQuery.data?.items || [];
@@ -24,7 +25,7 @@ export default function HomePage() {
             <div className="card-title">最新资源</div>
             <div className="card-body">
               {latest.map((resource) => (
-                <ResourceCard resource={resource} compact key={resource.id} />
+                <ResourceCard resource={resource} categories={categories} compact key={resource.id} />
               ))}
               {latestQuery.isError && <InlineApiError error={latestQuery.error} />}
               {!latest.length && <div className="tip" style={{ textAlign: 'center', padding: 20 }}>暂无资源</div>}
@@ -35,7 +36,7 @@ export default function HomePage() {
             <div className="card-title">热门资源</div>
             <div className="card-body">
               {hot.map((resource) => (
-                <ResourceCard resource={resource} compact key={resource.id} />
+                <ResourceCard resource={resource} categories={categories} compact key={resource.id} />
               ))}
               {hotQuery.isError && <InlineApiError error={hotQuery.error} />}
               {!hot.length && <div className="tip" style={{ textAlign: 'center', padding: 20 }}>暂无资源</div>}

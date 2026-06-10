@@ -26,6 +26,7 @@ export default function ResourcesPage() {
   const resourcesQuery = useResources(params);
   const categoriesQuery = useCategories();
   const resourceTypesQuery = useResourceTypes();
+  const categories = categoriesQuery.data || [];
   const items = useMemo(() => resourcesQuery.data?.items || [], [resourcesQuery.data?.items]);
   const total = resourcesQuery.data?.total || 0;
   const totalPages = Math.max(1, Math.ceil(total / (params.pageSize || 10)));
@@ -44,7 +45,7 @@ export default function ResourcesPage() {
       <ListingFilter
         mode="resources"
         value={params}
-        categories={categoriesQuery.data || []}
+        categories={categories}
         categoriesError={categoriesQuery.error}
         resourceTypes={resourceTypesQuery.data || []}
         resourceTypesError={resourceTypesQuery.error}
@@ -74,7 +75,7 @@ export default function ResourcesPage() {
         <div className="card-title">资源列表</div>
         <div className="card-body">
           {items.map((resource) => (
-            <ResourceCard resource={resource} key={resource.id} />
+            <ResourceCard resource={resource} categories={categories} key={resource.id} />
           ))}
           {resourcesQuery.isError && <InlineApiError error={resourcesQuery.error} />}
           {!items.length && <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>{resourcesQuery.isLoading ? '加载中...' : '暂无资源'}</div>}

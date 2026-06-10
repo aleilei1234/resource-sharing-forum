@@ -81,6 +81,7 @@ export function mapResource(value: unknown): Resource {
     favorited: bool(first(raw.favorited, raw.isFavorited, raw.favorite)),
     userRating: number(raw.userRating),
     ratingCount: number(raw.ratingCount),
+    status: text(raw.status, 'PUBLISHED'),
   };
 }
 
@@ -98,16 +99,26 @@ export function mapDemand(value: unknown): Demand {
     replyCount: number(first(raw.replyCount, raw.answerCount, raw.commentCount)),
     author: mapAuthor(first(raw.author, raw.authorName)),
     date: text(first(raw.date, raw.createdAt, raw.createTime), today()),
-    status: status === 'RESOLVED' || status === 'SOLVED' ? 'solved' : 'active',
+    status: demandStatus(status),
     tags: stringList(raw.tags),
     format: text(first(raw.format, raw.expectedFormat), '\u4e0d\u9650'),
   };
+}
+
+function demandStatus(status: string) {
+  if (status === 'RESOLVED' || status === 'SOLVED') return 'solved';
+  if (status === 'CANCELLED' || status === 'CANCELED') return 'cancelled';
+  if (status === 'CLOSED') return 'closed';
+  return 'active';
 }
 
 export function mapComment(value: unknown): Comment {
   const raw = asRecord(value);
   return {
     id: number(raw.id),
+    parentId: optionalNumber(first(raw.parentId, raw.parentCommentId)),
+    resourceId: optionalNumber(first(raw.resourceId, raw.referencedResourceId)),
+    externalUrl: text(first(raw.externalUrl, raw.url, raw.link)),
     author: mapAuthor(first(raw.author, raw.authorName, raw.nickname)),
     content: text(raw.content),
     date: text(first(raw.date, raw.createdAt, raw.createTime), today()),
@@ -122,7 +133,7 @@ export function mapResourceDetail(value: unknown) {
   const raw = asRecord(value);
   return {
     resource: mapResource(first(raw.resource, raw)),
-    comments: array(raw.comments).map(mapComment),
+    comments: nestComments(array(raw.comments).map(mapComment)),
   };
 }
 
@@ -132,7 +143,7 @@ export function mapDemandDetail(value: unknown) {
   const comments = array(raw.comments).map(mapComment);
   return {
     demand: mapDemand(first(raw.demand, raw.request, raw)),
-    comments: replies.length ? replies : comments,
+    comments: nestComments(replies.length ? replies : comments),
   };
 }
 
@@ -317,6 +328,12 @@ function number(value: unknown, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function optionalNumber(value: unknown) {
+  if (value === undefined || value === null || value === '') return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function bool(value: unknown, fallback = false) {
   if (typeof value === 'boolean') return value;
   if (value === 'true' || value === 1 || value === '1') return true;
@@ -342,6 +359,26 @@ function sizeText(value: unknown) {
     return `${(value / 1024 / 1024).toFixed(1)} MB`;
   }
   return text(value, '\u5f85\u5904\u7406');
+}
+
+function nestComments(comments: Comment[]) {
+  const byId = new Map<number, Comment>();
+  const roots: Comment[] = [];
+
+  comments.forEach((comment) => {
+    byId.set(comment.id, { ...comment, replies: [...(comment.replies || [])] });
+  });
+
+  byId.forEach((comment) => {
+    if (comment.parentId && byId.has(comment.parentId)) {
+      const parent = byId.get(comment.parentId);
+      parent?.replies?.push(comment);
+      return;
+    }
+    roots.push(comment);
+  });
+
+  return roots;
 }
 
 function today() {

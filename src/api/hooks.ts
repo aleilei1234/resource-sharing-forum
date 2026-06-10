@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as endpoints from './endpoints';
-import type { ListParams, User } from '../types';
+import type { Comment, ListParams, User } from '../types';
 
 export function useMe(enabled = true) {
   return useQuery({ queryKey: ['me'], queryFn: endpoints.getMe, enabled });
@@ -84,7 +84,7 @@ export function useResourceAction() {
 }
 
 export function useDownloadAttachment() {
-  return useMutation({ mutationFn: (attachmentId: number) => endpoints.downloadAttachment(attachmentId) });
+  return useMutation({ mutationFn: (attachmentId: number) => endpoints.downloadAttachmentFile(attachmentId) });
 }
 
 export function useRateResource() {
@@ -133,14 +133,34 @@ export function useCancelDemand() {
 export function useAddComment(kind: 'resources' | 'demands', id: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (values: { content: string; parentId?: number }) => endpoints.addComment(kind, id, values),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [kind === 'resources' ? 'resource' : 'demand', String(id)] });
+    mutationFn: (values: { content: string; parentId?: number; resourceId?: number; externalUrl?: string }) => endpoints.addComment(kind, id, values),
+    onSuccess: (comment, values) => {
+      const detailKey = [kind === 'resources' ? 'resource' : 'demand', String(id)];
+      queryClient.setQueryData<{ comments: Comment[] }>(detailKey, (current) => {
+        if (!current?.comments) return current;
+        return { ...current, comments: insertComment(current.comments, { ...comment, parentId: comment.parentId || values.parentId }) };
+      });
       if (kind === 'demands') {
         queryClient.invalidateQueries({ queryKey: ['demands'] });
         queryClient.invalidateQueries({ queryKey: ['profile-summary'] });
       }
     },
+  });
+}
+
+function insertComment(comments: Comment[], comment: Comment): Comment[] {
+  if (!comment.parentId) {
+    return [comment, ...comments];
+  }
+
+  return comments.map((item) => {
+    if (item.id === comment.parentId) {
+      return { ...item, replies: [...(item.replies || []), comment] };
+    }
+    if (item.replies?.length) {
+      return { ...item, replies: insertComment(item.replies, comment) };
+    }
+    return item;
   });
 }
 

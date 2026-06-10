@@ -242,7 +242,7 @@ export const resourceComments: Comment[] = [
     content: '如果大家发现缺页，可以在评论区标注年份，我会更新附件。',
     date: '2026-05-25',
     mine: true,
-    replies: [{ id: 21, author: '小赵', content: '谢谢，2021 年解析很有用。', date: '2026-05-25' }],
+    replies: [{ id: 21, author: '小赵', content: '谢谢，2021 年解析很有用。', date: '2026-05-25', replyToAuthor: '考研资料君' }],
   },
 ];
 
@@ -253,6 +253,7 @@ export const demandComments: Comment[] = [
     content: '我有一份整理版，包含结构化问答和试讲模板。',
     date: '2026-05-24',
     accepted: true,
+    replies: [{ id: 11, author: '教资考生', content: '太好了，可以发我一份吗？', date: '2026-05-24', replyToAuthor: '资料核对员' }],
   },
   { id: 2, author: '教师备考站', content: '可以补充一个面试流程清单。', date: '2026-05-24' },
 ];

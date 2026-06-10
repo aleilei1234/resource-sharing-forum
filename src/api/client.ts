@@ -40,7 +40,7 @@ apiClient.interceptors.response.use(
     if (isApiEnvelope(response.data)) {
       const { code, message, data } = response.data;
       if (typeof code === 'number' && code >= 400) {
-        return Promise.reject(new Error(message || 'Request failed'));
+        return Promise.reject(new Error(formatApiError(response.config, code, undefined, message)));
       }
       response.data = data;
     }
@@ -70,26 +70,52 @@ function isApiEnvelope(value: unknown): value is ApiEnvelope {
   );
 }
 
-function getErrorMessage(error: AxiosError | Error) {
+export function getErrorMessage(error: AxiosError | Error) {
   if (axios.isAxiosError(error)) {
-    const endpoint = describeEndpoint(error);
     if (error.code === 'ERR_NETWORK') {
-      return `后端没有实现或无法访问这个接口：${endpoint}`;
-    }
-    if (error.response?.status && [404, 405, 501].includes(error.response.status)) {
-      return `后端没有实现这个接口：${endpoint}`;
+      return formatApiError(error.config, undefined, undefined, '网络错误，后端无法访问');
     }
     const responseData = error.response?.data;
-    if (isApiEnvelope(responseData)) return responseData.message || 'Request failed';
-    if (responseData && typeof responseData === 'object' && 'message' in responseData) {
-      return String((responseData as { message?: unknown }).message || 'Request failed');
-    }
+    const responseMessage = getResponseMessage(responseData) || error.message;
+    return formatApiError(error.config, error.response?.status, error.response?.statusText, responseMessage);
   }
   return error.message || 'Request failed, please try again later';
 }
 
-function describeEndpoint(error: AxiosError) {
-  const method = (error.config?.method || 'GET').toUpperCase();
-  const url = error.config?.url || '';
-  return `${method} ${url}`;
+function getResponseMessage(responseData: unknown) {
+  if (isApiEnvelope(responseData)) return responseData.message || '';
+  if (responseData && typeof responseData === 'object' && 'message' in responseData) {
+    return String((responseData as { message?: unknown }).message || '');
+  }
+  if (typeof responseData === 'string') return responseData;
+  return '';
+}
+
+function formatApiError(config: { method?: string; url?: string } | undefined, status?: number, statusText?: string, message?: string) {
+  const endpoint = describeEndpoint(config);
+  const statusPart = status ? `（${describeStatus(status, statusText)}）` : '';
+  const messagePart = message ? `：${message}` : '';
+  return `接口请求失败：${endpoint}${statusPart}${messagePart}`;
+}
+
+function describeStatus(status: number, statusText?: string) {
+  const hint: Record<number, string> = {
+    400: '请求参数错误',
+    401: '未登录或权限不足',
+    403: '无权访问',
+    404: '接口不存在',
+    405: '请求方法不支持',
+    500: '后端内部错误',
+    501: '后端未实现',
+  };
+  return [`HTTP ${status}`, statusText, hint[status]].filter(Boolean).join('，');
+}
+
+function describeEndpoint(config?: { method?: string; url?: string }) {
+  const method = (config?.method || 'GET').toUpperCase();
+  let url = config?.url || '';
+  if (url.startsWith('/') && !url.startsWith(`${apiPrefix}/`) && url !== apiPrefix) {
+    url = `${apiPrefix}${url}`;
+  }
+  return `${method} ${url || 'unknown endpoint'}`;
 }

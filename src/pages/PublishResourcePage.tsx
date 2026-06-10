@@ -11,6 +11,7 @@ export default function PublishResourcePage() {
   const categoriesQuery = useCategories();
   const resourceTypesQuery = useResourceTypes();
   const [files, setFiles] = useState<File[]>([]);
+  const [feedback, setFeedback] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const [values, setValues] = useState({
     title: '',
     category1: '',
@@ -34,9 +35,12 @@ export default function PublishResourcePage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    setFeedback(null);
     const parsed = resourcePublishSchema.safeParse({ ...values, tags });
     if (!parsed.success) {
-      message.error(parsed.error.issues[0]?.message || '表单校验失败');
+      const errorMessage = parsed.error.issues[0]?.message || '表单校验失败';
+      setFeedback({ type: 'error', text: errorMessage });
+      message.error(errorMessage);
       return;
     }
     const formData = new FormData();
@@ -49,10 +53,13 @@ export default function PublishResourcePage() {
     files.forEach((file) => formData.append('files', file));
     try {
       const resource = await publish.mutateAsync(formData);
+      setFeedback({ type: 'success', text: `资源“${resource.title}”已提交审核，可在个人中心查看审核状态。` });
       message.success('资源已提交审核');
-      navigate(`/resources/${resource.id}`);
+      window.setTimeout(() => navigate('/profile?tab=my-resource'), 700);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '接口调用失败');
+      const errorMessage = error instanceof Error ? error.message : '接口调用失败';
+      setFeedback({ type: 'error', text: errorMessage });
+      message.error(errorMessage);
     }
   }
 
@@ -160,9 +167,10 @@ export default function PublishResourcePage() {
                 取消
               </button>
               <button className="btn-submit" type="submit" disabled={publish.isPending}>
-                提交审核
+                {publish.isPending ? '提交中...' : '提交审核'}
               </button>
             </div>
+            {feedback && <div className={`form-feedback ${feedback.type}`}>{feedback.text}</div>}
             <div className="tip" style={{ textAlign: 'center', marginTop: 12 }}>提交后进入待审核状态，审核通过后公开可见</div>
           </form>
         </div>

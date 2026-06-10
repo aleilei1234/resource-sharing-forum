@@ -52,9 +52,10 @@ export type Resource = {
   favorited: boolean;
   userRating: number;
   ratingCount: number;
+  status?: string;
 };
 
-export type DemandStatus = 'active' | 'solved';
+export type DemandStatus = 'active' | 'solved' | 'cancelled' | 'closed';
 
 export type Demand = {
   id: number;
@@ -73,6 +74,9 @@ export type Demand = {
 
 export type Comment = {
   id: number;
+  parentId?: number;
+  resourceId?: number;
+  externalUrl?: string;
   author: string;
   content: string;
   date: string;
@@ -118,6 +122,7 @@ export type ListParams = {
   cate1?: string;
   cate2?: string;
   type?: string;
+  rewardRange?: string;
   status?: string;
   sort?: string;
   page?: number;

@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useDemand } from '../api/hooks';
+import { useCategories, useDemand } from '../api/hooks';
 import { ApiError } from '../components/ApiState';
 import CommentPanel from '../components/CommentPanel';
 import ReportModal from '../components/ReportModal';
-import { formatCategory } from '../utils/format';
+import { canReplyToDemand, demandStatusLabel, formatCategory } from '../utils/format';
 
 export default function DemandDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const demandQuery = useDemand(id);
+  const categoriesQuery = useCategories();
   const [reportOpen, setReportOpen] = useState(false);
 
   if (demandQuery.isLoading) {
@@ -33,6 +34,8 @@ export default function DemandDetailPage() {
   }
 
   const { demand, comments } = demandQuery.data;
+  const categories = categoriesQuery.data || [];
+  const canReply = canReplyToDemand(demand.status);
 
   return (
     <div className="container detail-container">
@@ -52,12 +55,12 @@ export default function DemandDetailPage() {
           </div>
 
           <div className="detail-meta">
-            <span>分类：{formatCategory(demand.category1, demand.category2)}</span>
+            <span>分类：{formatCategory(demand.category1, demand.category2, categories)}</span>
             <span>类型：求资源</span>
             <span>发布者：{demand.author}</span>
             <span>发布时间：{demand.date}</span>
             <span>悬赏积分：{demand.points}</span>
-            <span>状态：{demand.status === 'solved' ? '已解决' : '进行中'}</span>
+            <span>状态：{demandStatusLabel(demand.status)}</span>
           </div>
 
           <div className="resource-tags">
@@ -83,8 +86,15 @@ export default function DemandDetailPage() {
         </div>
       </div>
 
-      <CommentPanel kind="demands" id={demand.id} comments={comments} title="我来回答" ownerName={demand.author} />
-      <ReportModal open={reportOpen} target="DEMAND" targetId={demand.id} onClose={() => setReportOpen(false)} />
+      <CommentPanel
+        kind="demands"
+        id={demand.id}
+        comments={comments}
+        title="我来回答"
+        ownerName={demand.author}
+        disabledMessage={canReply ? undefined : `该求资源当前状态为“${demandStatusLabel(demand.status)}”，不能继续提交回答。`}
+      />
+      <ReportModal open={reportOpen} target="DEMAND" targetId={demand.id} subjectTitle={demand.title} onClose={() => setReportOpen(false)} />
     </div>
   );
 }

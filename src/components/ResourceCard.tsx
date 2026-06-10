@@ -1,13 +1,14 @@
 import { useNavigate } from 'react-router-dom';
-import type { Resource } from '../types';
+import type { Category, Resource } from '../types';
 import { formatCategory } from '../utils/format';
 
 type Props = {
   resource: Resource;
   compact?: boolean;
+  categories?: Category[];
 };
 
-export default function ResourceCard({ resource }: Props) {
+export default function ResourceCard({ resource, categories = [] }: Props) {
   const navigate = useNavigate();
 
   function openDetail() {
@@ -27,7 +28,7 @@ export default function ResourceCard({ resource }: Props) {
       <div className="resource-title">{resource.title}</div>
       <div className="resource-desc">{resource.description}</div>
       <div className="resource-meta">
-        <span>{formatCategory(resource.category1, resource.category2)}</span>
+        <span>{formatCategory(resource.category1, resource.category2, categories)}</span>
         <span>发布者：{resource.author}</span>
         <span>下载：{resource.downloads}</span>
         <span>评分：{resource.score.toFixed(1)}</span>

@@ -8,10 +8,11 @@ import type { ListParams } from '../types';
 
 export default function DemandsPage() {
   const navigate = useNavigate();
-  const [params, setParams] = useState<ListParams>({ page: 1, pageSize: 5, sort: 'latest' });
+  const [params, setParams] = useState<ListParams>({ page: 1, pageSize: 5, sort: 'latest', status: 'active' });
   const demandsQuery = useDemands(params);
   const categoriesQuery = useCategories();
-  const items = demandsQuery.data?.items || [];
+  const categories = categoriesQuery.data || [];
+  const items = (demandsQuery.data?.items || []).filter((demand) => demand.status === 'active' || demand.status === 'solved');
   const total = demandsQuery.data?.total || 0;
   const totalPages = Math.max(1, Math.ceil(total / (params.pageSize || 5)));
 
@@ -26,13 +27,13 @@ export default function DemandsPage() {
         </button>
       </div>
 
-      <ListingFilter mode="demands" value={params} categories={categoriesQuery.data || []} categoriesError={categoriesQuery.error} onChange={setParams} />
+      <ListingFilter mode="demands" value={params} categories={categories} categoriesError={categoriesQuery.error} onChange={setParams} />
 
       <div className="card">
         <div className="card-title">求资源列表</div>
         <div className="card-body">
           {items.map((demand) => (
-            <DemandCard demand={demand} key={demand.id} />
+            <DemandCard demand={demand} categories={categories} key={demand.id} />
           ))}
           {demandsQuery.isError && <InlineApiError error={demandsQuery.error} />}
           {!items.length && <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>{demandsQuery.isLoading ? '加载中...' : '暂无求资源需求'}</div>}

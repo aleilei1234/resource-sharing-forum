@@ -85,7 +85,7 @@ export default function ListingFilter({ mode, value, categories, categoriesError
             <>
               <div className="filter-item">
                 <div className="filter-label">悬赏积分</div>
-                <select className="filter-select" value={value.type || ''} onChange={(event) => update({ type: event.target.value || undefined })}>
+                <select className="filter-select" value={value.rewardRange || ''} onChange={(event) => update({ rewardRange: event.target.value || undefined })}>
                   <option value="">全部</option>
                   <option value="free">免费</option>
                   <option value="0-100">0-100</option>
@@ -97,7 +97,7 @@ export default function ListingFilter({ mode, value, categories, categoriesError
               <div className="filter-item">
                 <div className="filter-label">状态</div>
                 <select className="filter-select" value={value.status || ''} onChange={(event) => update({ status: event.target.value || undefined })}>
-                  <option value="">全部</option>
+                  <option value="">全部可展示</option>
                   <option value="active">进行中</option>
                   <option value="solved">已解决</option>
                 </select>

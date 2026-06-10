@@ -10,6 +10,7 @@ export default function PublishDemandPage() {
   const publish = usePublishDemand();
   const categoriesQuery = useCategories();
   const [rewardType, setRewardType] = useState<'free' | 'point'>('free');
+  const [feedback, setFeedback] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const [values, setValues] = useState({
     title: '',
     category1: '',
@@ -27,6 +28,7 @@ export default function PublishDemandPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    setFeedback(null);
     const payload = {
       ...values,
       points: rewardType === 'point' ? Number(values.points || 0) : 0,
@@ -34,15 +36,20 @@ export default function PublishDemandPage() {
     };
     const parsed = demandPublishSchema.safeParse(payload);
     if (!parsed.success) {
-      message.error(parsed.error.issues[0]?.message || '表单校验失败');
+      const errorMessage = parsed.error.issues[0]?.message || '表单校验失败';
+      setFeedback({ type: 'error', text: errorMessage });
+      message.error(errorMessage);
       return;
     }
     try {
       const demand = await publish.mutateAsync(parsed.data);
+      setFeedback({ type: 'success', text: `求资源“${demand.title}”已发布。` });
       message.success('求资源已发布');
-      navigate(`/demands/${demand.id}`);
+      window.setTimeout(() => navigate(`/demands/${demand.id}`), 500);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '接口调用失败');
+      const errorMessage = error instanceof Error ? error.message : '接口调用失败';
+      setFeedback({ type: 'error', text: errorMessage });
+      message.error(errorMessage);
     }
   }
 
@@ -129,9 +136,10 @@ export default function PublishDemandPage() {
                 取消
               </button>
               <button className="btn-submit" type="submit" disabled={publish.isPending}>
-                发布求资源
+                {publish.isPending ? '发布中...' : '发布求资源'}
               </button>
             </div>
+            {feedback && <div className={`form-feedback ${feedback.type}`}>{feedback.text}</div>}
             <div className="tip" style={{ textAlign: 'center', marginTop: 12 }}>发布后可在个人中心查看，未采纳前可取消</div>
           </form>
         </div>

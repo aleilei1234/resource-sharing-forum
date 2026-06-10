@@ -33,6 +33,7 @@ import {
 import { ApiError } from '../components/ApiState';
 import { useAuthStore } from '../store/auth';
 import type { Demand, Resource } from '../types';
+import { demandStatusLabel } from '../utils/format';
 
 type TabKey = 'profile' | 'my-resource' | 'my-demand' | 'my-fav' | 'my-like' | 'member' | 'message' | 'security' | 'login-log';
 
@@ -234,7 +235,7 @@ export default function ProfilePage() {
                   {profile.avatar ? <img className="avatar-preview-img" src={profile.avatar} alt="头像" /> : <div className="avatar-preview-img" />}
                   <div>
                     <input className="form-input" value={profile.avatar} onChange={(event) => setProfile((prev) => ({ ...prev, avatar: event.target.value }))} placeholder="头像地址" />
-                    <div className="tip">支持图片 URL，后续可接入上传接口</div>
+                    <div className="tip">当前仅支持图片 URL；本地头像上传需后端提供头像上传接口</div>
                   </div>
                 </div>
                 <div className="form-item">
@@ -254,8 +255,8 @@ export default function ProfilePage() {
             </div>
           )}
 
-          {active === 'my-resource' && <ListCard title="我发布的资源" items={userResourcesQuery.data?.items || []} loading={userResourcesQuery.isLoading} error={userResourcesQuery.error} getHref={(item: Resource) => `/resources/${item.id}`} render={(item: Resource) => item.title} meta={(item: Resource) => `${item.date} | 下载：${item.downloads}`} />}
-          {active === 'my-demand' && <ListCard title="我的求资源" items={userRequestsQuery.data?.items || []} loading={userRequestsQuery.isLoading} error={userRequestsQuery.error} getHref={(item: Demand) => `/demands/${item.id}`} render={(item: Demand) => item.title} meta={(item: Demand) => `悬赏：${item.points}积分 | 状态：${item.status === 'solved' ? '已解决' : '进行中'} | 回复：${item.replyCount}`} action={{ label: '取消', icon: <DeleteOutlined />, onClick: removeDemand, pending: cancelDemand.isPending }} />}
+          {active === 'my-resource' && <ListCard title="我发布的资源" items={userResourcesQuery.data?.items || []} loading={userResourcesQuery.isLoading} error={userResourcesQuery.error} getHref={(item: Resource) => `/resources/${item.id}`} render={(item: Resource) => item.title} meta={(item: Resource) => `${item.date} | 状态：${resourceStatusLabel(item.status)} | 下载：${item.downloads}`} />}
+          {active === 'my-demand' && <ListCard title="我的求资源" items={userRequestsQuery.data?.items || []} loading={userRequestsQuery.isLoading} error={userRequestsQuery.error} getHref={(item: Demand) => `/demands/${item.id}`} render={(item: Demand) => item.title} meta={(item: Demand) => `悬赏：${item.points}积分 | 状态：${demandStatusLabel(item.status)} | 回复：${item.replyCount}`} action={{ label: '取消', icon: <DeleteOutlined />, onClick: removeDemand, pending: cancelDemand.isPending }} />}
           {active === 'my-fav' && <ListCard title="我的收藏" items={userFavoritesQuery.data?.items || []} loading={userFavoritesQuery.isLoading} error={userFavoritesQuery.error} getHref={(item: Resource) => `/resources/${item.id}`} render={(item: Resource) => item.title} meta={(item: Resource) => `${item.date} | ${item.type}`} action={{ label: '取消收藏', onClick: cancelFavorite, pending: resourceAction.isPending }} />}
           {active === 'my-like' && <ListCard title="我的点赞" items={userLikesQuery.data?.items || []} loading={userLikesQuery.isLoading} error={userLikesQuery.error} getHref={(item: Resource) => `/resources/${item.id}`} render={(item: Resource) => item.title} meta={(item: Resource) => `${item.date} | ${item.author}`} action={{ label: '取消点赞', onClick: cancelLike, pending: resourceAction.isPending }} />}
           {active === 'member' && <MemberCenter points={user.points} level={user.level} expNeeded={user.expNeeded} percent={percent} />}
@@ -304,6 +305,21 @@ export default function ProfilePage() {
       </div>
     </div>
   );
+}
+
+function resourceStatusLabel(status?: string) {
+  const normalized = (status || '').toUpperCase();
+  const labels: Record<string, string> = {
+    DRAFT: '草稿',
+    PENDING_REVIEW: '待审核',
+    REVIEWING_RISK: '风险复核中',
+    PUBLISHED: '已发布',
+    REJECTED: '审核未通过',
+    OFFLINE: '已下架',
+    COPYRIGHT_DOWN: '版权下架',
+    DELETED: '已删除',
+  };
+  return labels[normalized] || status || '未知';
 }
 
 type ListCardAction<T> = {
