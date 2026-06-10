@@ -184,6 +184,10 @@ public class DesignSpecForumService {
         return requestRewardService.replyRequest(requestId, accountId, request);
     }
 
+    public Map<String, Object> replyRequest(Long requestId, Long accountId, Map<String, Object> request, List<MultipartFile> files) {
+        return requestRewardService.replyRequest(requestId, accountId, request, files);
+    }
+
     public Map<String, Object> settleRequest(Long requestId, Long accountId, Map<String, Object> request) {
         return requestRewardService.settleRequest(requestId, accountId, request);
     }

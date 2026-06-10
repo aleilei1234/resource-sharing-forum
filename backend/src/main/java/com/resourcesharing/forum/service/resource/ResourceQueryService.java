@@ -3,6 +3,7 @@ package com.resourcesharing.forum.service.resource;
 import com.resourcesharing.forum.common.PageResult;
 import com.resourcesharing.forum.common.BusinessException;
 import com.resourcesharing.forum.common.ErrorCode;
+import com.resourcesharing.forum.service.interaction.CommentTreeService;
 import com.resourcesharing.forum.service.support.MappingSupport;
 import com.resourcesharing.forum.service.support.TxSupport;
 import com.resourcesharing.forum.service.support.ValueSupport;
@@ -20,11 +21,13 @@ public class ResourceQueryService {
     private final TxSupport txSupport;
     private final ValueSupport values;
     private final MappingSupport mappings;
+    private final CommentTreeService commentTreeService;
 
-    public ResourceQueryService(TxSupport txSupport, ValueSupport values, MappingSupport mappings) {
+    public ResourceQueryService(TxSupport txSupport, ValueSupport values, MappingSupport mappings, CommentTreeService commentTreeService) {
         this.txSupport = txSupport;
         this.values = values;
         this.mappings = mappings;
+        this.commentTreeService = commentTreeService;
     }
 
     public PageResult<Map<String, Object>> listResources(Map<String, String> params, Long accountId) {
@@ -103,7 +106,7 @@ public class ResourceQueryService {
     public Map<String, Object> resourceDetail(Long resourceId, Long accountId) {
         return values.map(
                 "resource", resource(resourceId, accountId),
-                "comments", comments(resourceId, accountId, 1, 20).list()
+                "comments", commentTreeService.tree("RESOURCE", resourceId, accountId, 1, 20).list()
         );
     }
 
@@ -190,33 +193,6 @@ public class ResourceQueryService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "resource does not exist or cannot be viewed");
         } catch (DataAccessException ignored) {
             return defaultResource();
-        }
-    }
-
-    private PageResult<Map<String, Object>> comments(Long resourceId, Long accountId, int page, int size) {
-        JdbcTemplate jdbc = txSupport.jdbc();
-        if (jdbc == null) {
-            return new PageResult<>(0, List.of(), page, size);
-        }
-        try {
-            long total = jdbc.queryForObject("""
-                    SELECT COUNT(*) FROM comment_info
-                    WHERE target_type = 'RESOURCE' AND target_id = ? AND status = 'ACTIVE' AND parent_id IS NULL AND deleted_at IS NULL
-                    """, Long.class, resourceId);
-            List<Map<String, Object>> list = jdbc.query("""
-                    SELECT ci.id, ci.target_type, ci.target_id, ci.content, ci.created_at, ci.member_id, ci.parent_id, mp.nickname,
-                           (SELECT COUNT(*) FROM user_interaction ui
-                            WHERE ui.target_type = 'COMMENT' AND ui.target_id = ci.id
-                              AND ui.action_type = 'LIKE' AND ui.status = 'ACTIVE' AND ui.deleted_at IS NULL) AS like_count
-                    FROM comment_info ci
-                    JOIN member_profile mp ON mp.id = ci.member_id
-                    WHERE ci.target_type = 'RESOURCE' AND ci.target_id = ? AND ci.status = 'ACTIVE' AND ci.parent_id IS NULL AND ci.deleted_at IS NULL
-                    ORDER BY ci.created_at DESC
-                    LIMIT ?, ?
-                    """, mappings.commentMapper(accountId), resourceId, (page - 1) * size, size);
-            return new PageResult<>(total, list, page, size);
-        } catch (DataAccessException ignored) {
-            return new PageResult<>(0, List.of(), page, size);
         }
     }
 

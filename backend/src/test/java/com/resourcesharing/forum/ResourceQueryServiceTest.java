@@ -2,6 +2,7 @@ package com.resourcesharing.forum;
 
 import com.resourcesharing.forum.common.BusinessException;
 import com.resourcesharing.forum.common.ErrorCode;
+import com.resourcesharing.forum.service.interaction.CommentTreeService;
 import com.resourcesharing.forum.service.resource.ResourceQueryService;
 import com.resourcesharing.forum.service.support.ForumLookupService;
 import com.resourcesharing.forum.service.support.MappingSupport;
@@ -45,7 +46,8 @@ class ResourceQueryServiceTest {
         ValueSupport values = new ValueSupport();
         ForumLookupService lookup = new ForumLookupService(txSupport);
         MappingSupport mappings = new MappingSupport(values, lookup);
-        return new ResourceQueryService(txSupport, values, mappings);
+        CommentTreeService commentTreeService = new CommentTreeService(txSupport, mappings);
+        return new ResourceQueryService(txSupport, values, mappings, commentTreeService);
     }
 
     private static final class CapturingJdbcTemplate extends JdbcTemplate {

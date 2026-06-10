@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -28,6 +29,7 @@ import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -37,6 +39,8 @@ public class FileService {
     private static final Set<String> BLOCKED_EXTENSIONS = Set.of(
             "exe", "bat", "cmd", "sh", "ps1", "msi", "com", "scr", "jar", "war", "php", "jsp", "asp", "aspx"
     );
+    private static final Set<String> IMAGE_EXTENSIONS = Set.of("jpg", "jpeg", "png", "webp", "gif");
+    private static final long MAX_AVATAR_SIZE = 5L * 1024L * 1024L;
 
     private final ObjectProvider<JdbcTemplate> jdbcProvider;
     private final Path rootDir;
@@ -108,15 +112,102 @@ public class FileService {
         return new AttachmentView(id, resourceId, originalName, ext, file.getSize(), resourceId == null ? "TEMP" : "NORMAL");
     }
 
+    @Transactional
+    public AttachmentView uploadForOwner(MultipartFile file, String ownerType, Long ownerId, Long accountId) {
+        JdbcTemplate jdbc = jdbc();
+        if (jdbc == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "文件服务需要数据库连接");
+        }
+        requireNormalAccount(jdbc, accountId);
+        validateFile(file);
+        String normalizedOwnerType = normalizeOwnerType(ownerType);
+        if (ownerId == null || ownerId <= 0) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "附件归属对象不能为空");
+        }
+        ensureOwnerWritable(jdbc, normalizedOwnerType, ownerId, accountId);
+
+        String originalName = sanitizeName(file.getOriginalFilename());
+        String ext = extension(originalName);
+        String storedName = UUID.randomUUID() + "." + ext;
+        LocalDate today = LocalDate.now();
+        Path relativePath = Path.of(normalizedOwnerType.toLowerCase(Locale.ROOT), String.valueOf(ownerId),
+                String.valueOf(today.getYear()), String.format("%02d", today.getMonthValue()), storedName);
+        Path target = rootDir.resolve(relativePath).normalize();
+        if (!target.startsWith(rootDir)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "文件路径不合法");
+        }
+
+        String hash = store(file, target);
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbc.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement("""
+                    INSERT INTO file_attachment(
+                        owner_type, owner_id, uploader_id, original_file_name, stored_file_name,
+                        file_ext, mime_type, file_size, file_hash, storage_path, status
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NORMAL')
+                    """, Statement.RETURN_GENERATED_KEYS);
+            statement.setString(1, normalizedOwnerType);
+            statement.setLong(2, ownerId);
+            statement.setLong(3, accountId);
+            statement.setString(4, originalName);
+            statement.setString(5, storedName);
+            statement.setString(6, ext);
+            statement.setString(7, safeMime(file.getContentType()));
+            statement.setLong(8, file.getSize());
+            statement.setString(9, hash);
+            statement.setString(10, relativePath.toString().replace('\\', '/'));
+            return statement;
+        }, keyHolder);
+
+        Long id = keyHolder.getKey() == null ? 0L : keyHolder.getKey().longValue();
+        return new AttachmentView(id, ownerId, originalName, ext, file.getSize(), "NORMAL");
+    }
+
+    @Transactional
+    public Map<String, Object> uploadAvatar(MultipartFile file, Long accountId) {
+        JdbcTemplate jdbc = jdbc();
+        if (jdbc == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "文件服务需要数据库连接");
+        }
+        requireNormalAccount(jdbc, accountId);
+        validateAvatar(file);
+
+        String originalName = sanitizeName(file.getOriginalFilename());
+        String ext = extension(originalName);
+        String storedName = UUID.randomUUID() + "." + ext;
+        Path relativePath = Path.of("avatars", String.valueOf(accountId), storedName);
+        Path target = rootDir.resolve(relativePath).normalize();
+        if (!target.startsWith(rootDir)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "头像路径不合法");
+        }
+        store(file, target);
+
+        String avatarUrl = "/api/public/avatars/" + accountId + "/" + storedName;
+        int updated = jdbc.update("""
+                UPDATE member_profile
+                SET avatar_url = ?, updated_at = NOW(3)
+                WHERE account_id = ? AND deleted_at IS NULL
+                """, avatarUrl, accountId);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "用户资料不存在");
+        }
+        return Map.of("avatarUrl", avatarUrl, "avatar", avatarUrl);
+    }
+
     public List<AttachmentView> listByResource(Long resourceId) {
+        return listByOwner("RESOURCE", resourceId);
+    }
+
+    public List<AttachmentView> listByOwner(String ownerType, Long ownerId) {
         JdbcTemplate jdbc = jdbc();
         if (jdbc == null) {
             return List.of();
         }
+        String normalizedOwnerType = normalizeOwnerType(ownerType);
         return jdbc.query("""
                 SELECT id, owner_id, original_file_name, file_ext, file_size, status
                 FROM file_attachment
-                WHERE owner_type = 'RESOURCE' AND owner_id = ? AND deleted_at IS NULL
+                WHERE owner_type = ? AND owner_id = ? AND deleted_at IS NULL
                 ORDER BY id DESC
                 """, (rs, rowNum) -> new AttachmentView(
                 rs.getLong("id"),
@@ -125,7 +216,7 @@ public class FileService {
                 rs.getString("file_ext"),
                 rs.getLong("file_size"),
                 rs.getString("status")
-        ), resourceId);
+        ), normalizedOwnerType, ownerId);
     }
 
     public AttachmentStream stream(Long attachmentId, Long accountId) {
@@ -137,15 +228,16 @@ public class FileService {
         AttachmentStream stream;
         try {
             stream = jdbc.queryForObject("""
-                    SELECT fa.original_file_name, fa.mime_type, fa.file_size, fa.storage_path, r.status
+                    SELECT fa.original_file_name, fa.mime_type, fa.file_size, fa.storage_path, fa.owner_type, r.status
                     FROM file_attachment fa
-                    JOIN resource_info r ON r.id = fa.owner_id AND fa.owner_type = 'RESOURCE'
+                    LEFT JOIN resource_info r ON r.id = fa.owner_id AND fa.owner_type = 'RESOURCE'
                     WHERE fa.id = ? AND fa.status = 'NORMAL' AND fa.deleted_at IS NULL
                     """, (rs, rowNum) -> new AttachmentStream(
                     rs.getString("original_file_name"),
                     safeMime(rs.getString("mime_type")),
                     rs.getLong("file_size"),
-                    rootDir.resolve(rs.getString("storage_path")).normalize(),
+                    resolveStoragePath(rs.getString("storage_path")),
+                    rs.getString("owner_type"),
                     rs.getString("status")
             ), attachmentId);
         } catch (DataAccessException ignored) {
@@ -154,13 +246,33 @@ public class FileService {
         if (stream == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "attachment does not exist");
         }
-        if (!"PUBLISHED".equals(stream.resourceStatus())) {
+        if ("RESOURCE".equals(stream.ownerType()) && !"PUBLISHED".equals(stream.resourceStatus())) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "resource is not published");
         }
         if (!stream.path().startsWith(rootDir) || !Files.exists(stream.path()) || !Files.isRegularFile(stream.path())) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "file does not exist");
         }
         return stream;
+    }
+
+    public AvatarStream publicAvatar(Long accountId, String fileName) {
+        if (accountId == null || accountId <= 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "avatar does not exist");
+        }
+        String safeName = sanitizeName(fileName);
+        String ext = extension(safeName);
+        if (!IMAGE_EXTENSIONS.contains(ext)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "头像文件类型不允许");
+        }
+        Path path = rootDir.resolve(Path.of("avatars", String.valueOf(accountId), safeName)).normalize();
+        if (!path.startsWith(rootDir) || !Files.exists(path) || !Files.isRegularFile(path)) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "avatar does not exist");
+        }
+        try {
+            return new AvatarStream(safeName, mimeForImageExt(ext), Files.size(path), path);
+        } catch (IOException exception) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "头像读取失败");
+        }
     }
 
     @Transactional
@@ -228,6 +340,26 @@ public class FileService {
         }
     }
 
+    private void ensureOwnerWritable(JdbcTemplate jdbc, String ownerType, Long ownerId, Long accountId) {
+        if ("RESOURCE".equals(ownerType)) {
+            ensureResourceWritable(ownerId, accountId);
+            return;
+        }
+        if ("REQUEST_REPLY".equals(ownerType)) {
+            Integer allowed = jdbc.queryForObject("""
+                    SELECT COUNT(*)
+                    FROM request_reply rr
+                    JOIN member_profile mp ON mp.id = rr.replier_id
+                    WHERE rr.id = ? AND mp.account_id = ? AND rr.status = 'ACTIVE' AND rr.deleted_at IS NULL
+                    """, Integer.class, ownerId, accountId);
+            if (allowed == null || allowed == 0) {
+                throw new BusinessException(ErrorCode.FORBIDDEN, "无权绑定该回答附件");
+            }
+            return;
+        }
+        throw new BusinessException(ErrorCode.BAD_REQUEST, "附件归属类型不支持");
+    }
+
     private void validateFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "上传文件不能为空");
@@ -243,6 +375,24 @@ public class FileService {
         String mime = safeMime(file.getContentType());
         if (mime.contains("x-msdownload") || mime.contains("x-sh") || mime.contains("php")) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "上传文件 MIME 类型不允许");
+        }
+    }
+
+    private void validateAvatar(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "头像文件不能为空");
+        }
+        if (file.getSize() > MAX_AVATAR_SIZE) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "头像文件超过大小限制");
+        }
+        String name = sanitizeName(file.getOriginalFilename());
+        String ext = extension(name);
+        if (!IMAGE_EXTENSIONS.contains(ext)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "头像仅支持 jpg、png、webp、gif");
+        }
+        String mime = safeMime(file.getContentType());
+        if (!mime.startsWith("image/")) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "头像 MIME 类型不允许");
         }
     }
 
@@ -279,10 +429,47 @@ public class FileService {
         return mime == null ? "application/octet-stream" : mime.toLowerCase(Locale.ROOT);
     }
 
+    private Path resolveStoragePath(String storagePath) {
+        String normalized = storagePath == null ? "" : storagePath.replace('\\', '/').trim();
+        while (normalized.startsWith("./")) {
+            normalized = normalized.substring(2);
+        }
+        Path candidate = Paths.get(normalized);
+        if (candidate.isAbsolute()) {
+            return candidate.normalize();
+        }
+        String rootName = rootDir.getFileName() == null ? "" : rootDir.getFileName().toString();
+        if (!rootName.isBlank() && normalized.startsWith(rootName + "/")) {
+            normalized = normalized.substring(rootName.length() + 1);
+        }
+        return rootDir.resolve(normalized).normalize();
+    }
+
+    private static String normalizeOwnerType(String ownerType) {
+        String normalized = ownerType == null ? "" : ownerType.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "RESOURCE", "REQUEST_REPLY" -> normalized;
+            default -> throw new BusinessException(ErrorCode.BAD_REQUEST, "附件归属类型不支持");
+        };
+    }
+
+    private static String mimeForImageExt(String ext) {
+        return switch (ext) {
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "png" -> "image/png";
+            case "webp" -> "image/webp";
+            case "gif" -> "image/gif";
+            default -> "application/octet-stream";
+        };
+    }
+
     private JdbcTemplate jdbc() {
         return jdbcProvider.getIfAvailable();
     }
 
-    public record AttachmentStream(String fileName, String mimeType, long fileSize, Path path, String resourceStatus) {
+    public record AttachmentStream(String fileName, String mimeType, long fileSize, Path path, String ownerType, String resourceStatus) {
+    }
+
+    public record AvatarStream(String fileName, String mimeType, long fileSize, Path path) {
     }
 }

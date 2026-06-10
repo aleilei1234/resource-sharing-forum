@@ -4,6 +4,9 @@ import com.resourcesharing.forum.common.BusinessException;
 import com.resourcesharing.forum.common.ErrorCode;
 import com.resourcesharing.forum.common.PageResult;
 import com.resourcesharing.forum.domain.statemachine.RequestStateMachine;
+import com.resourcesharing.forum.dto.FileDtos.AttachmentView;
+import com.resourcesharing.forum.service.FileService;
+import com.resourcesharing.forum.service.interaction.CommentTreeService;
 import com.resourcesharing.forum.service.notification.NotificationDispatcher;
 import com.resourcesharing.forum.service.point.PointManager;
 import com.resourcesharing.forum.service.support.ContentModerationService;
@@ -17,6 +20,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.sql.PreparedStatement;
 import java.sql.Statement;
@@ -35,6 +39,8 @@ public class RequestRewardService {
     private final AdminLogService adminLogService;
     private final NotificationDispatcher notificationDispatcher;
     private final ContentModerationService contentModerationService;
+    private final CommentTreeService commentTreeService;
+    private final FileService fileService;
 
     public RequestRewardService(
             TxSupport txSupport,
@@ -44,7 +50,9 @@ public class RequestRewardService {
             PointManager pointManager,
             AdminLogService adminLogService,
             NotificationDispatcher notificationDispatcher,
-            ContentModerationService contentModerationService
+            ContentModerationService contentModerationService,
+            CommentTreeService commentTreeService,
+            FileService fileService
     ) {
         this.txSupport = txSupport;
         this.values = values;
@@ -54,6 +62,8 @@ public class RequestRewardService {
         this.adminLogService = adminLogService;
         this.notificationDispatcher = notificationDispatcher;
         this.contentModerationService = contentModerationService;
+        this.commentTreeService = commentTreeService;
+        this.fileService = fileService;
     }
 
     public PageResult<Map<String, Object>> listRequests(Map<String, String> params) {
@@ -261,7 +271,7 @@ public class RequestRewardService {
         return values.map(
                 "request", requestPost(requestId),
                 "replies", listReplies(requestId, Map.of("page", "1", "size", "20")).list(),
-                "comments", comments("REQUEST_POST", requestId, accountId, 1, 20).list()
+                "comments", commentTreeService.tree("REQUEST_POST", requestId, accountId, 1, 20).list()
         );
     }
 
@@ -321,6 +331,7 @@ public class RequestRewardService {
                     ORDER BY rr.is_accepted DESC, rr.created_at DESC
                     LIMIT ?, ?
                     """, mappings.replyMapper(), requestId, (page - 1) * size, size);
+            list.forEach(this::appendReplyAttachments);
             return new PageResult<>(total, list, page, size);
         } catch (DataAccessException ignored) {
             return new PageResult<>(0, List.of(), page, size);
@@ -328,9 +339,14 @@ public class RequestRewardService {
     }
 
     public Map<String, Object> replyRequest(Long requestId, Long accountId, Map<String, Object> request) {
+        return replyRequest(requestId, accountId, request, List.of());
+    }
+
+    public Map<String, Object> replyRequest(Long requestId, Long accountId, Map<String, Object> request, List<MultipartFile> files) {
         Long resourceId = values.number(values.firstPresent(request, "resourceId", "referencedResourceId"), 0L);
         String externalUrl = values.blankToNull(values.value(request, "externalUrl", ""));
-        String content = normalizeReplyContent(values.value(request, "content", ""), resourceId, externalUrl);
+        List<MultipartFile> safeFiles = files == null ? List.of() : files.stream().filter(file -> file != null && !file.isEmpty()).toList();
+        String content = normalizeReplyContent(values.value(request, "content", ""), resourceId, externalUrl, !safeFiles.isEmpty());
         JdbcTemplate jdbc = txSupport.jdbc();
         if (jdbc == null) {
             return values.map("id", 1L, "requestId", requestId, "content", content, "accepted", false);
@@ -370,7 +386,11 @@ public class RequestRewardService {
             jdbc.update("UPDATE request_post SET answer_count = answer_count + 1 WHERE id = ?", requestId);
             notificationDispatcher.dispatchToMember(values.number(post.get("requesterId"), 0L), "REQUEST_REPLY",
                     "Request received a new reply", "Your request received a new reply", "REQUEST_POST", requestId);
-            return reply(values.key(keyHolder));
+            Long replyId = values.key(keyHolder);
+            for (MultipartFile file : safeFiles) {
+                fileService.uploadForOwner(file, "REQUEST_REPLY", replyId, accountId);
+            }
+            return reply(replyId);
         });
     }
 
@@ -407,11 +427,15 @@ public class RequestRewardService {
     }
 
     private String normalizeReplyContent(String content, Long resourceId, String externalUrl) {
+        return normalizeReplyContent(content, resourceId, externalUrl, false);
+    }
+
+    private String normalizeReplyContent(String content, Long resourceId, String externalUrl, boolean hasFiles) {
         String normalized = values.firstNonBlank(content);
         boolean hasResource = resourceId != null && resourceId != 0;
         boolean hasExternalUrl = externalUrl != null && !externalUrl.isBlank();
-        if (normalized.isBlank() && !hasResource && !hasExternalUrl) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "reply content, referenced resource, or external URL is required");
+        if (normalized.isBlank() && !hasResource && !hasExternalUrl && !hasFiles) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "reply content, referenced resource, external URL, or attachment is required");
         }
         if (!normalized.isBlank() && normalized.length() > 1000) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "reply content length must be at most 1000");
@@ -541,41 +565,39 @@ public class RequestRewardService {
     private Map<String, Object> reply(Long replyId) {
         JdbcTemplate jdbc = txSupport.jdbc();
         if (jdbc == null) {
-            return values.map("id", replyId, "accepted", false);
+            return values.map("id", replyId, "accepted", false, "attachments", List.of());
         }
-        return jdbc.queryForObject("""
+        Map<String, Object> reply = jdbc.queryForObject("""
                 SELECT rr.*, mp.nickname AS author_name
                 FROM request_reply rr
                 JOIN member_profile mp ON mp.id = rr.replier_id
                 WHERE rr.id = ?
                 """, mappings.replyMapper(), replyId);
+        appendReplyAttachments(reply);
+        return reply;
     }
 
-    private PageResult<Map<String, Object>> comments(String targetType, Long targetId, Long accountId, int page, int size) {
-        JdbcTemplate jdbc = txSupport.jdbc();
-        if (jdbc == null) {
-            return new PageResult<>(0, List.of(), page, size);
+    private void appendReplyAttachments(Map<String, Object> reply) {
+        if (reply == null || !reply.containsKey("id")) {
+            return;
         }
-        try {
-            long total = jdbc.queryForObject("""
-                    SELECT COUNT(*) FROM comment_info
-                    WHERE target_type = ? AND target_id = ? AND status = 'ACTIVE' AND parent_id IS NULL AND deleted_at IS NULL
-                    """, Long.class, targetType, targetId);
-            List<Map<String, Object>> list = jdbc.query("""
-                    SELECT ci.id, ci.target_type, ci.target_id, ci.content, ci.created_at, ci.member_id, ci.parent_id, mp.nickname,
-                           (SELECT COUNT(*) FROM user_interaction ui
-                            WHERE ui.target_type = 'COMMENT' AND ui.target_id = ci.id
-                              AND ui.action_type = 'LIKE' AND ui.status = 'ACTIVE' AND ui.deleted_at IS NULL) AS like_count
-                    FROM comment_info ci
-                    JOIN member_profile mp ON mp.id = ci.member_id
-                    WHERE ci.target_type = ? AND ci.target_id = ? AND ci.status = 'ACTIVE' AND ci.parent_id IS NULL AND ci.deleted_at IS NULL
-                    ORDER BY ci.created_at DESC
-                    LIMIT ?, ?
-                    """, mappings.commentMapper(accountId), targetType, targetId, (page - 1) * size, size);
-            return new PageResult<>(total, list, page, size);
-        } catch (DataAccessException ignored) {
-            return new PageResult<>(0, List.of(), page, size);
-        }
+        Long replyId = values.number(reply.get("id"), 0L);
+        reply.put("attachments", fileService.listByOwner("REQUEST_REPLY", replyId).stream()
+                .map(this::replyAttachment)
+                .toList());
+    }
+
+    private Map<String, Object> replyAttachment(AttachmentView attachment) {
+        return values.map(
+                "id", attachment.id(),
+                "name", attachment.fileName(),
+                "fileName", attachment.fileName(),
+                "fileType", attachment.fileType(),
+                "type", attachment.fileType() == null ? "" : attachment.fileType().toUpperCase(),
+                "fileSize", attachment.fileSize(),
+                "status", attachment.status(),
+                "downloadUrl", "/api/files/" + attachment.id() + "/stream"
+        );
     }
 
     private void insertRequestTags(JdbcTemplate jdbc, Long requestId, String tagsText) {

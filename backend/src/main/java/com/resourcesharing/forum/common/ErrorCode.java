@@ -6,6 +6,7 @@ public enum ErrorCode {
     UNAUTHORIZED(401, "请先登录后再操作"),
     FORBIDDEN(403, "当前账号无操作权限"),
     NOT_FOUND(404, "资源不存在"),
+    CONFLICT(409, "资源状态冲突"),
     INTERNAL_ERROR(500, "系统繁忙，请稍后再试");
 
     private final int code;

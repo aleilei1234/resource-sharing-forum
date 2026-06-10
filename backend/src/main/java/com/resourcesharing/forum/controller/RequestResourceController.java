@@ -3,9 +3,12 @@ package com.resourcesharing.forum.controller;
 import com.resourcesharing.forum.common.ApiResponse;
 import com.resourcesharing.forum.common.PageResult;
 import com.resourcesharing.forum.service.DesignSpecForumService;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -43,14 +46,38 @@ public class RequestResourceController {
         return ApiResponse.success(forumService.listReplies(id, params));
     }
 
-    @PostMapping("/{id}/replies")
+    @PostMapping(value = "/{id}/replies", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ApiResponse<Map<String, Object>> reply(@PathVariable Long id, @RequestBody Map<String, Object> request, Authentication authentication) {
         return ApiResponse.created(forumService.replyRequest(id, accountId(authentication), request));
     }
 
-    @PostMapping("/{id}/answers")
+    @PostMapping(value = "/{id}/replies", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<Map<String, Object>> replyWithFiles(
+            @PathVariable Long id,
+            @RequestParam(required = false, defaultValue = "") String content,
+            @RequestParam(required = false) Long resourceId,
+            @RequestParam(required = false) String externalUrl,
+            @RequestParam(required = false) List<MultipartFile> files,
+            Authentication authentication
+    ) {
+        return ApiResponse.created(forumService.replyRequest(id, accountId(authentication), requestBody(content, resourceId, externalUrl), files));
+    }
+
+    @PostMapping(value = "/{id}/answers", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ApiResponse<Map<String, Object>> answer(@PathVariable Long id, @RequestBody Map<String, Object> request, Authentication authentication) {
         return reply(id, request, authentication);
+    }
+
+    @PostMapping(value = "/{id}/answers", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<Map<String, Object>> answerWithFiles(
+            @PathVariable Long id,
+            @RequestParam(required = false, defaultValue = "") String content,
+            @RequestParam(required = false) Long resourceId,
+            @RequestParam(required = false) String externalUrl,
+            @RequestParam(required = false) List<MultipartFile> files,
+            Authentication authentication
+    ) {
+        return replyWithFiles(id, content, resourceId, externalUrl, files, authentication);
     }
 
     @PostMapping("/{id}/settle")
@@ -72,6 +99,14 @@ public class RequestResourceController {
         } catch (NumberFormatException ignored) {
             return null;
         }
+    }
+
+    private static Map<String, Object> requestBody(String content, Long resourceId, String externalUrl) {
+        return Map.of(
+                "content", content == null ? "" : content,
+                "resourceId", resourceId == null ? 0L : resourceId,
+                "externalUrl", externalUrl == null ? "" : externalUrl
+        );
     }
 }
 

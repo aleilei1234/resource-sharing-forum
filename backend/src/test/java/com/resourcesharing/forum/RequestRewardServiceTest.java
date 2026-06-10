@@ -2,6 +2,8 @@ package com.resourcesharing.forum;
 
 import com.resourcesharing.forum.common.BusinessException;
 import com.resourcesharing.forum.common.ErrorCode;
+import com.resourcesharing.forum.service.FileService;
+import com.resourcesharing.forum.service.interaction.CommentTreeService;
 import com.resourcesharing.forum.service.request.RequestRewardService;
 import com.resourcesharing.forum.service.point.PointManager;
 import com.resourcesharing.forum.service.support.ContentModerationService;
@@ -263,7 +265,10 @@ class RequestRewardServiceTest {
         ForumLookupService lookup = new ForumLookupService(txSupport);
         MappingSupport mappings = new MappingSupport(values, lookup);
         AdminLogService adminLogService = new AdminLogService(txSupport, values);
-        return new RequestRewardService(txSupport, values, mappings, lookup, pointManager, adminLogService, null, contentModerationService);
+        CommentTreeService commentTreeService = new CommentTreeService(txSupport, mappings);
+        FileService fileService = new FileService(provider(jdbc), "./uploads", "pdf,doc,docx,ppt,pptx,xls,xlsx,zip,rar,7z,png,jpg,jpeg,txt,md", 100);
+        return new RequestRewardService(txSupport, values, mappings, lookup, pointManager, adminLogService, null,
+                contentModerationService, commentTreeService, fileService);
     }
 
     private static ContentModerationService moderationRejecting(String token) {

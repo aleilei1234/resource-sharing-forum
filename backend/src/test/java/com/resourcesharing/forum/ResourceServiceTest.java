@@ -2,6 +2,7 @@ package com.resourcesharing.forum;
 
 import com.resourcesharing.forum.common.BusinessException;
 import com.resourcesharing.forum.common.ErrorCode;
+import com.resourcesharing.forum.service.interaction.CommentTreeService;
 import com.resourcesharing.forum.service.notification.NotificationDispatcher;
 import com.resourcesharing.forum.service.resource.ResourceQueryService;
 import com.resourcesharing.forum.service.resource.ResourceService;
@@ -121,7 +122,8 @@ class ResourceServiceTest {
         ValueSupport values = new ValueSupport();
         ForumLookupService lookup = new ForumLookupService(txSupport);
         MappingSupport mappings = new MappingSupport(values, lookup);
-        ResourceQueryService queryService = new ResourceQueryService(txSupport, values, mappings);
+        CommentTreeService commentTreeService = new CommentTreeService(txSupport, mappings);
+        ResourceQueryService queryService = new ResourceQueryService(txSupport, values, mappings, commentTreeService);
         AdminLogService adminLogService = new AdminLogService(txSupport, values);
         return new ResourceService(txSupport, values, lookup, queryService, adminLogService, null, contentModerationService);
     }

@@ -44,7 +44,7 @@ public class SecurityConfig {
                                 response.setStatus(HttpStatus.FORBIDDEN.value()))
                 )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/health", "/api/auth/**", "/api/v1/auth/**").permitAll()
+                        .requestMatchers("/api/health", "/api/auth/**", "/api/v1/auth/**", "/api/public/avatars/**").permitAll()
                         .requestMatchers(HttpMethod.PUT, "/api/resources/*/audit", "/api/v1/resources/*/audit").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET,
                                 "/api/resources/**",

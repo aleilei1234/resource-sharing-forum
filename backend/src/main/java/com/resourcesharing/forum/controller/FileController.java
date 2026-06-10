@@ -32,8 +32,13 @@ public class FileController {
     public ApiResponse<AttachmentView> upload(
             @RequestParam MultipartFile file,
             @RequestParam(required = false) Long resourceId,
+            @RequestParam(required = false) String ownerType,
+            @RequestParam(required = false) Long ownerId,
             Authentication authentication
     ) {
+        if (ownerType != null && !ownerType.isBlank()) {
+            return ApiResponse.created(fileService.uploadForOwner(file, ownerType, ownerId, accountId(authentication)));
+        }
         return ApiResponse.created(fileService.upload(file, resourceId, accountId(authentication)));
     }
 

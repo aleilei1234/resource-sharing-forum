@@ -11,6 +11,7 @@ import com.resourcesharing.forum.service.support.ValueSupport;
 import com.resourcesharing.forum.service.system.AdminLogService;
 import com.resourcesharing.forum.service.system.AdminMemberService;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -58,22 +59,26 @@ public class ReportComplaintService {
             return values.map("ok", true, "status", "PENDING");
         }
         KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbc.update(connection -> {
-            PreparedStatement statement = connection.prepareStatement("""
-                    INSERT INTO report_complaint(reporter_id, report_type, target_type, target_id, title, reason, proof_summary, contact_email, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
-                    """, Statement.RETURN_GENERATED_KEYS);
-            String targetType = reportTarget(values.value(request, "targetType", values.value(request, "target", "RESOURCE")));
-            statement.setLong(1, lookup.requireMemberId(accountId));
-            statement.setString(2, reportType(values.value(request, "type", "RESOURCE"), targetType));
-            statement.setString(3, targetType);
-            statement.setLong(4, values.number(values.firstPresent(request, "targetId"), 0L));
-            statement.setString(5, values.blankToNull(values.value(request, "title", "")));
-            statement.setString(6, values.firstNonBlank(values.value(request, "reason", ""), "User submitted report"));
-            statement.setString(7, values.blankToNull(values.value(request, "proofSummary", "")));
-            statement.setString(8, values.blankToNull(values.value(request, "contactEmail", "")));
-            return statement;
-        }, keyHolder);
+        try {
+            jdbc.update(connection -> {
+                PreparedStatement statement = connection.prepareStatement("""
+                        INSERT INTO report_complaint(reporter_id, report_type, target_type, target_id, title, reason, proof_summary, contact_email, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
+                        """, Statement.RETURN_GENERATED_KEYS);
+                String targetType = reportTarget(values.value(request, "targetType", values.value(request, "target", "RESOURCE")));
+                statement.setLong(1, lookup.requireMemberId(accountId));
+                statement.setString(2, reportType(values.value(request, "type", "RESOURCE"), targetType));
+                statement.setString(3, targetType);
+                statement.setLong(4, values.number(values.firstPresent(request, "targetId"), 0L));
+                statement.setString(5, values.blankToNull(values.value(request, "title", "")));
+                statement.setString(6, values.firstNonBlank(values.value(request, "reason", ""), "User submitted report"));
+                statement.setString(7, values.blankToNull(values.value(request, "proofSummary", "")));
+                statement.setString(8, values.blankToNull(values.value(request, "contactEmail", "")));
+                return statement;
+            }, keyHolder);
+        } catch (DuplicateKeyException exception) {
+            throw new BusinessException(ErrorCode.CONFLICT, "你已提交过该举报，处理中请勿重复提交");
+        }
         return values.map("ok", true, "id", values.key(keyHolder), "status", "PENDING");
     }
 
