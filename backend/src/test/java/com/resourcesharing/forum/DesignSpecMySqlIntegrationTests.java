@@ -1,5 +1,6 @@
 package com.resourcesharing.forum;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -15,9 +16,11 @@ import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -41,12 +44,19 @@ class DesignSpecMySqlIntegrationTests {
     private final MockMvc mockMvc;
     private final JdbcTemplate jdbcTemplate;
     private final PasswordEncoder passwordEncoder;
+    private final ObjectMapper objectMapper;
 
     @Autowired
-    DesignSpecMySqlIntegrationTests(MockMvc mockMvc, JdbcTemplate jdbcTemplate, PasswordEncoder passwordEncoder) {
+    DesignSpecMySqlIntegrationTests(
+            MockMvc mockMvc,
+            JdbcTemplate jdbcTemplate,
+            PasswordEncoder passwordEncoder,
+            ObjectMapper objectMapper
+    ) {
         this.mockMvc = mockMvc;
         this.jdbcTemplate = jdbcTemplate;
         this.passwordEncoder = passwordEncoder;
+        this.objectMapper = objectMapper;
     }
 
     @DynamicPropertySource
@@ -211,8 +221,15 @@ class DesignSpecMySqlIntegrationTests {
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
-                .getContentAsString();
-        return response.replaceAll(".*\"token\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+                .getContentAsString(StandardCharsets.UTF_8);
+        String token = objectMapper.readTree(response)
+                .path("data")
+                .path("token")
+                .asText();
+        assertThat(token)
+                .as("login response should contain data.token: %s", response)
+                .isNotBlank();
+        return token;
     }
 
     private void seedRegisterCode(String email, String code) {
