@@ -20,8 +20,78 @@ export type User = {
   avatar: string;
   level: string;
   points: number;
+  frozenPoints: number;
+  availablePoints: number;
+  rewardLimit: number;
+  dailyDownloadLimit?: number;
+  dailyResourcePublishLimit?: number;
+  dailyRequestPublishLimit?: number;
+  maxFilesPerResource?: number;
+  maxFileSizeMb?: number;
+  canApplyTop?: boolean;
+  nextLevel?: string;
+  nextLevelMinPoints?: number;
+  progressPercent?: number;
+  benefits?: PointBenefit[];
+  pointRules?: PointRule[];
   expNeeded: number;
   passwordUpdatedAt: string;
+};
+
+export type PointBenefit = {
+  name: string;
+  description: string;
+  limit: number | string;
+  enabled: boolean;
+};
+
+export type PointRule = {
+  key: string;
+  action: string;
+  points: string;
+  note: string;
+};
+
+export type PointAccount = {
+  points: number;
+  frozenPoints: number;
+  availablePoints: number;
+  level: string;
+  levelCode: string;
+  levelMinPoints: number;
+  levelMaxPoints?: number;
+  nextLevel: string;
+  nextLevelMinPoints: number;
+  rewardLimit: number;
+  dailyDownloadLimit: number;
+  dailyResourcePublishLimit: number;
+  dailyRequestPublishLimit: number;
+  maxFilesPerResource: number;
+  maxFileSizeMb: number;
+  canApplyTop: boolean;
+  expNeeded: number;
+  progressPercent: number;
+  benefits: PointBenefit[];
+  pointRules: PointRule[];
+};
+
+export type PointFlow = {
+  id: number;
+  flowType: string;
+  scene: string;
+  pointsChange: number;
+  frozenChange: number;
+  beforePoints: number;
+  afterPoints: number;
+  beforeFrozenPoints: number;
+  afterFrozenPoints: number;
+  relatedType: string;
+  relatedId: number;
+  description: string;
+  createTime: string;
+  sceneLabel?: string;
+  relatedLabel?: string;
+  balanceText?: string;
 };
 
 export type ResourceAttachment = {
@@ -30,6 +100,7 @@ export type ResourceAttachment = {
   size: string;
   type: string;
   downloads: number;
+  downloadUrl?: string;
 };
 
 export type Resource = {
@@ -82,6 +153,7 @@ export type Comment = {
   date: string;
   mine?: boolean;
   accepted?: boolean;
+  attachments?: ResourceAttachment[];
   replyToAuthor?: string;
   replies?: Comment[];
 };

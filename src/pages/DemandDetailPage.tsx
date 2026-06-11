@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useCategories, useDemand } from '../api/hooks';
+import { useAcceptDemandAnswer, useCategories, useDemand } from '../api/hooks';
 import { ApiError } from '../components/ApiState';
 import CommentPanel from '../components/CommentPanel';
 import ReportModal from '../components/ReportModal';
+import { useAuthStore } from '../store/auth';
 import { canReplyToDemand, demandStatusLabel, formatCategory } from '../utils/format';
 
 export default function DemandDetailPage() {
@@ -11,6 +12,8 @@ export default function DemandDetailPage() {
   const navigate = useNavigate();
   const demandQuery = useDemand(id);
   const categoriesQuery = useCategories();
+  const acceptAnswer = useAcceptDemandAnswer(Number(id || 0));
+  const currentUser = useAuthStore((state) => state.user);
   const [reportOpen, setReportOpen] = useState(false);
 
   if (demandQuery.isLoading) {
@@ -36,6 +39,13 @@ export default function DemandDetailPage() {
   const { demand, comments } = demandQuery.data;
   const categories = categoriesQuery.data || [];
   const canReply = canReplyToDemand(demand.status);
+  const currentUserName = currentUser?.nickname || currentUser?.username || '';
+  const isDemandOwner = Boolean(currentUserName && demand.author === currentUserName);
+  const answerDisabledMessage = !canReply
+    ? `该求资源当前状态为“${demandStatusLabel(demand.status)}”，不能继续提交回答。`
+    : isDemandOwner
+      ? '这是你发布的求资源，不能回答自己的帖子；可以在回答列表中采纳他人的回答。'
+      : undefined;
 
   return (
     <div className="container detail-container">
@@ -92,7 +102,10 @@ export default function DemandDetailPage() {
         comments={comments}
         title="我来回答"
         ownerName={demand.author}
-        disabledMessage={canReply ? undefined : `该求资源当前状态为“${demandStatusLabel(demand.status)}”，不能继续提交回答。`}
+        disabledMessage={answerDisabledMessage}
+        canAcceptAnswer={isDemandOwner && canReply}
+        acceptingAnswerId={acceptAnswer.isPending ? acceptAnswer.variables ?? null : null}
+        onAcceptAnswer={(comment) => acceptAnswer.mutateAsync(comment.id)}
       />
       <ReportModal open={reportOpen} target="DEMAND" targetId={demand.id} subjectTitle={demand.title} onClose={() => setReportOpen(false)} />
     </div>

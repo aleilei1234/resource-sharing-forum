@@ -685,6 +685,7 @@ button {
 
 .comment-report,
 .comment-delete,
+.comment-accept,
 .comment-reply,
 .reply-report {
   border: none;
@@ -701,9 +702,17 @@ button {
   color: #2e7d32;
 }
 
+.comment-accept {
+  color: #1677ff;
+}
+
 .comment-report,
 .reply-report {
   color: #f44336;
+}
+
+.comment-attachments {
+  margin: 8px 0 0 36px;
 }
 
 .reply-box {
@@ -1093,11 +1102,20 @@ button {
 
 .avatar-upload-btn,
 .upload-btn.light {
+  display: inline-block;
   padding: 6px 12px;
   border: 1px solid #c8e6c9;
   border-radius: 6px;
   background: #f1f8e9;
   color: #2e7d32;
+  cursor: pointer;
+}
+
+.avatar-upload-btn.disabled {
+  border-color: #ddd;
+  background: #eee;
+  color: #999;
+  cursor: not-allowed;
 }
 
 .item-btn {
@@ -1293,6 +1311,55 @@ button {
   color: #d32f2f;
 }
 
+.member-rule-note {
+  display: block;
+  margin-left: 14px;
+  color: #888;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.point-flow-table {
+  overflow: hidden;
+  border: 1px solid #eee;
+  border-radius: 8px;
+}
+
+.point-flow-head,
+.point-flow-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr 1fr 0.8fr 0.8fr 0.8fr;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.point-flow-head {
+  background: #f7f7f7;
+  color: #333;
+  font-weight: bold;
+}
+
+.point-flow-row {
+  border-top: 1px solid #f5f5f5;
+}
+
+.point-flow-desc {
+  grid-column: 1 / -1;
+  color: #888;
+}
+
+.point-positive {
+  color: #2e7d32;
+  font-weight: bold;
+}
+
+.point-negative {
+  color: #d32f2f;
+  font-weight: bold;
+}
+
 .api-error,
 .api-error-inline {
   border: 1px solid #f2c3bd;
@@ -1438,6 +1505,11 @@ button {
   border-radius: 4px;
   background: #2e7d32;
   color: #fff;
+}
+
+.code-btn:disabled {
+  background: #bdbdbd;
+  cursor: not-allowed;
 }
 
 .modal {

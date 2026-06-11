@@ -1,7 +1,31 @@
 import { http, HttpResponse } from 'msw';
 import { db } from './db';
 import { filterDemands, filterResources, paginate } from '../utils/listing';
-import type { Comment, ListParams, ResourceAttachment } from '../types';
+import type { Comment, ListParams, PointFlow, ResourceAttachment, User } from '../types';
+
+const mockUsers: User[] = [
+  { ...db.user },
+  {
+    ...db.user,
+    id: 2,
+    username: 'demo_user',
+    nickname: '演示用户',
+    email: 'demo@example.com',
+    contact: 'demo@example.com',
+    points: 650,
+    expNeeded: 1000,
+  },
+  {
+    ...db.user,
+    id: 3,
+    username: 'user001',
+    nickname: '用户001',
+    email: 'user001@example.com',
+    contact: 'user001@example.com',
+    points: 320,
+    expNeeded: 1000,
+  },
+];
 
 function paramsFromUrl(request: Request): ListParams {
   const url = new URL(request.url);
@@ -16,15 +40,7 @@ function paramsFromUrl(request: Request): ListParams {
 function uploadedAttachments(formData: FormData): ResourceAttachment[] {
   const files = formData.getAll('files');
   if (!files.length) {
-    return [
-      {
-        id: 1,
-        name: String(formData.get('fileName') || 'uploaded-file.zip'),
-        size: '\u5f85\u5904\u7406',
-        type: '\u6587\u4ef6',
-        downloads: 0,
-      },
-    ];
+    return [];
   }
 
   return files.map((file, index) => {
@@ -32,11 +48,25 @@ function uploadedAttachments(formData: FormData): ResourceAttachment[] {
     return {
       id: index + 1,
       name: fileName,
-      size: '\u5f85\u5904\u7406',
+      size: file instanceof File ? readableSize(file.size) : '\u5f85\u5904\u7406',
       type: fileName.includes('.') ? fileName.split('.').pop()?.toUpperCase() || '\u6587\u4ef6' : '\u6587\u4ef6',
       downloads: 0,
     };
   });
+}
+
+function readableSize(bytes: number) {
+  if (bytes <= 0) return '\u5f85\u5904\u7406';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function findAttachment(attachmentId: number) {
+  for (const resource of db.resources) {
+    const attachment = resource.attachments.find((item) => item.id === attachmentId);
+    if (attachment) return { resource, attachment };
+  }
+  return null;
 }
 
 function apiGet(path: string, resolver: Parameters<typeof http.get>[1]) {
@@ -66,6 +96,11 @@ function createComment(content: string, extra: Partial<Comment> = {}): Comment {
   };
 }
 
+function findMockUser(account = '') {
+  const normalized = account.trim().toLowerCase();
+  return [db.user, ...mockUsers].find((user) => user.username.toLowerCase() === normalized || user.email.toLowerCase() === normalized);
+}
+
 function profileSummary() {
   const favorites = db.resources.filter((item) => item.favorited);
   const likes = db.resources.filter((item) => item.liked);
@@ -78,19 +113,81 @@ function profileSummary() {
   };
 }
 
+function pointAccount() {
+  return {
+    points: db.user.points,
+    frozenPoints: db.user.frozenPoints,
+    availablePoints: db.user.availablePoints,
+    level: db.user.level,
+    levelCode: 'QUALITY',
+    levelMinPoints: 500,
+    levelMaxPoints: 1999,
+    nextLevel: db.user.nextLevel || '资深会员',
+    nextLevelMinPoints: db.user.nextLevelMinPoints || 2000,
+    rewardLimit: db.user.rewardLimit,
+    dailyDownloadLimit: db.user.dailyDownloadLimit,
+    dailyResourcePublishLimit: db.user.dailyResourcePublishLimit,
+    dailyRequestPublishLimit: db.user.dailyRequestPublishLimit,
+    maxFilesPerResource: db.user.maxFilesPerResource,
+    maxFileSizeMb: db.user.maxFileSizeMb,
+    canApplyTop: db.user.canApplyTop,
+    expNeeded: Math.max(0, (db.user.nextLevelMinPoints || 2000) - db.user.points),
+    progressPercent: db.user.progressPercent,
+    benefits: db.user.benefits,
+    pointRules: db.user.pointRules,
+    rules: db.user.pointRules,
+  };
+}
+
+const pointFlows: PointFlow[] = [
+  {
+    id: 1,
+    flowType: 'EARN',
+    scene: 'DAILY_LOGIN',
+    pointsChange: 10,
+    frozenChange: 0,
+    beforePoints: 1250,
+    afterPoints: 1260,
+    beforeFrozenPoints: 0,
+    afterFrozenPoints: 0,
+    relatedType: 'MANUAL',
+    relatedId: 0,
+    description: '每日登录奖励',
+    createTime: new Date().toISOString(),
+    sceneLabel: '每日登录',
+    relatedLabel: '关联对象',
+    balanceText: '当前 1260 分，冻结 0 分',
+  },
+];
+
 export const handlers = [
   ...apiPost('/auth/login', async ({ request }) => {
-    const body = (await request.json()) as { account?: string };
+    const body = (await request.json()) as { account?: string; password?: string };
+    const user = findMockUser(body.account);
+    if (!user || body.password !== 'password123') {
+      return HttpResponse.json({ code: 401, message: 'account or password is incorrect', data: null }, { status: 401 });
+    }
+    db.user = { ...user };
     return HttpResponse.json({
-      token: 'mock-user-token',
-      user: { ...db.user, username: body.account || db.user.username },
+      token: `mock-user-token-${user.id}`,
+      user: db.user,
     });
+  }),
+
+  ...apiPost('/auth/register/code', async ({ request }) => {
+    const body = (await request.json()) as { email?: string };
+    return HttpResponse.json({ ok: true, email: body.email, expiresInMinutes: 10, devCode: '123456' });
   }),
 
   ...apiPost('/auth/register', async ({ request }) => {
     const body = (await request.json()) as { username: string; email: string };
     db.user = { ...db.user, username: body.username, nickname: body.username, email: body.email, emailVerified: true };
     return HttpResponse.json({ token: 'mock-user-token', user: db.user }, { status: 201 });
+  }),
+
+  ...apiPost('/auth/reset-password/code', async ({ request }) => {
+    const body = (await request.json()) as { email?: string; account?: string };
+    return HttpResponse.json({ ok: true, email: body.email || body.account, expiresInMinutes: 10, devCode: '123456' });
   }),
 
   ...apiPost('/auth/reset-password', () => HttpResponse.json({ ok: true })),
@@ -131,6 +228,8 @@ export const handlers = [
 
   ...apiGet('/me/summary', () => HttpResponse.json(profileSummary())),
   ...apiGet('/user/profile/summary', () => HttpResponse.json(profileSummary())),
+  ...apiGet('/user/points', () => HttpResponse.json(pointAccount())),
+  ...apiGet('/user/points/flows', () => HttpResponse.json(paginate(pointFlows, 1, 10))),
   ...apiGet('/notifications', () => HttpResponse.json(paginate(db.profileSummary.messages, 1, 20))),
   ...apiGet('/notifications/unread-count', () =>
     HttpResponse.json({ count: db.profileSummary.messages.filter((item) => item.unread).length }),
@@ -175,6 +274,44 @@ export const handlers = [
     };
     db.resources.unshift(resource);
     return HttpResponse.json(resource, { status: 201 });
+  }),
+
+  ...apiPost('/v1/attachments/upload', async ({ request }) => {
+    const formData = await request.formData();
+    const resourceId = Number(formData.get('resourceId'));
+    const file = formData.get('file');
+    const resource = db.resources.find((item) => item.id === resourceId);
+    if (!resource || !(file instanceof File)) return HttpResponse.json({ message: 'attachment target not found' }, { status: 404 });
+
+    const attachment = {
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      name: file.name,
+      size: readableSize(file.size),
+      type: file.name.includes('.') ? file.name.split('.').pop()?.toUpperCase() || '\u6587\u4ef6' : '\u6587\u4ef6',
+      downloads: 0,
+    };
+    resource.attachments.push(attachment);
+    resource.fileName = resource.attachments[0]?.name || '';
+    resource.fileSize = resource.attachments[0]?.size || '';
+
+    return HttpResponse.json(
+      {
+        id: attachment.id,
+        resourceId,
+        fileName: attachment.name,
+        fileType: attachment.type,
+        fileSize: file.size,
+        status: 'NORMAL',
+      },
+      { status: 201 },
+    );
+  }),
+
+  ...apiPost('/resources/:id/submit', ({ params }) => {
+    const resource = db.resources.find((item) => item.id === Number(params.id));
+    if (!resource) return HttpResponse.json({ message: 'resource not found' }, { status: 404 });
+    resource.status = 'PENDING_REVIEW';
+    return HttpResponse.json(resource);
   }),
 
   ...apiPost('/resources/:id/:action', async ({ params, request }) => {
@@ -310,6 +447,41 @@ export const handlers = [
     const reply = createComment(body.content, { replyToAuthor: parent.author });
     parent.replies = [...(parent.replies || []), reply];
     return HttpResponse.json(reply, { status: 201 });
+  }),
+
+  ...apiGet('/attachments/:id/download', ({ params }) => {
+    const found = findAttachment(Number(params.id));
+    if (!found) return HttpResponse.json({ message: 'attachment not found' }, { status: 404 });
+    found.attachment.downloads += 1;
+    found.resource.downloads += 1;
+    return HttpResponse.json({
+      recordId: Date.now(),
+      fileName: found.attachment.name,
+      downloadUrl: `/api/v1/attachments/${found.attachment.id}/stream`,
+    });
+  }),
+
+  ...apiGet('/files/:id/download', ({ params }) => {
+    const found = findAttachment(Number(params.id));
+    if (!found) return HttpResponse.json({ message: 'attachment not found' }, { status: 404 });
+    found.attachment.downloads += 1;
+    found.resource.downloads += 1;
+    return HttpResponse.json({
+      recordId: Date.now(),
+      fileName: found.attachment.name,
+      downloadUrl: `/api/v1/attachments/${found.attachment.id}/stream`,
+    });
+  }),
+
+  ...apiGet('/attachments/:id/stream', ({ params }) => {
+    const found = findAttachment(Number(params.id));
+    if (!found) return HttpResponse.json({ message: 'attachment not found' }, { status: 404 });
+    return new HttpResponse(`mock attachment content: ${found.attachment.name}`, {
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${found.attachment.name}"`,
+      },
+    });
   }),
 
   ...apiPost('/reports', () => HttpResponse.json({ ok: true })),

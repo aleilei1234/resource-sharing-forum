@@ -12,7 +12,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import { message } from 'antd';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   useBindEmail,
@@ -22,8 +22,11 @@ import {
   useMarkNotificationRead,
   useMe,
   useNotifications,
+  usePointAccount,
+  usePointFlows,
   useResourceAction,
   useUpdateMe,
+  useUploadAvatar,
   useUserFavorites,
   useUserLikes,
   useUserLoginRecords,
@@ -32,7 +35,7 @@ import {
 } from '../api/hooks';
 import { ApiError } from '../components/ApiState';
 import { useAuthStore } from '../store/auth';
-import type { Demand, Resource } from '../types';
+import type { Demand, PointAccount, PointBenefit, PointFlow, PointRule, Resource } from '../types';
 import { demandStatusLabel } from '../utils/format';
 
 type TabKey = 'profile' | 'my-resource' | 'my-demand' | 'my-fav' | 'my-like' | 'member' | 'message' | 'security' | 'login-log';
@@ -59,8 +62,10 @@ export default function ProfilePage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const active = getTabKey(searchParams.get('tab'));
-  const meQuery = useMe();
+  const { token, setUser, logout } = useAuthStore();
+  const meQuery = useMe(token);
   const updateMe = useUpdateMe();
+  const uploadAvatar = useUploadAvatar();
   const changePassword = useChangePassword();
   const bindEmail = useBindEmail();
   const cancelDemand = useCancelDemand();
@@ -69,12 +74,15 @@ export default function ProfilePage() {
   const userRequestsQuery = useUserRequests(active === 'my-demand');
   const userFavoritesQuery = useUserFavorites(active === 'my-fav');
   const userLikesQuery = useUserLikes(active === 'my-like');
+  const pointAccountQuery = usePointAccount(active === 'member');
+  const pointFlowsQuery = usePointFlows(active === 'member');
   const notificationsQuery = useNotifications(true);
   const markNotificationRead = useMarkNotificationRead();
   const markAllNotificationsRead = useMarkAllNotificationsRead();
   const loginRecordsQuery = useUserLoginRecords(active === 'login-log');
-  const { setUser, logout } = useAuthStore();
   const user = meQuery.data;
+  const pointAccount = pointAccountQuery.data;
+  const memberPoints = pointAccount?.points ?? user?.points ?? 0;
   const unreadCount = notificationsQuery.data?.items.filter((item) => item.unread).length || 0;
 
   const [profile, setProfile] = useState({ nickname: '', bio: '', avatar: '' });
@@ -90,8 +98,9 @@ export default function ProfilePage() {
 
   const percent = useMemo(() => {
     if (!user) return 0;
-    return Math.min(100, Math.round((user.points / Math.max(user.expNeeded, 1)) * 100));
-  }, [user]);
+    if (typeof pointAccount?.progressPercent === 'number') return pointAccount.progressPercent;
+    return Math.min(100, Math.round((memberPoints / Math.max(user.expNeeded, 1)) * 100));
+  }, [memberPoints, pointAccount?.progressPercent, user]);
 
   if (meQuery.error) {
     return <div className="container"><div className="card"><div className="card-body"><ApiError error={meQuery.error} /></div></div></div>;
@@ -107,11 +116,36 @@ export default function ProfilePage() {
       return;
     }
     try {
-      const next = await updateMe.mutateAsync(profile);
+      const next = await updateMe.mutateAsync({ nickname: profile.nickname, bio: profile.bio });
       setUser(next);
       message.success('保存成功');
     } catch (error) {
       message.error(error instanceof Error ? error.message : '接口调用失败');
+    }
+  }
+
+  async function uploadProfileAvatar(event: ChangeEvent<HTMLInputElement>) {
+    if (!user) return;
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      message.warning('头像仅支持 jpg、png、webp、gif');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      message.warning('头像文件不能超过 5MB');
+      return;
+    }
+    try {
+      const { avatar } = await uploadAvatar.mutateAsync(file);
+      const nextUser = { ...user, avatar };
+      setProfile((prev) => ({ ...prev, avatar }));
+      setUser(nextUser);
+      message.success('头像上传成功');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '头像上传失败');
     }
   }
 
@@ -234,8 +268,11 @@ export default function ProfilePage() {
                 <div className="avatar-preview">
                   {profile.avatar ? <img className="avatar-preview-img" src={profile.avatar} alt="头像" /> : <div className="avatar-preview-img" />}
                   <div>
-                    <input className="form-input" value={profile.avatar} onChange={(event) => setProfile((prev) => ({ ...prev, avatar: event.target.value }))} placeholder="头像地址" />
-                    <div className="tip">当前仅支持图片 URL；本地头像上传需后端提供头像上传接口</div>
+                    <label className={`avatar-upload-btn ${uploadAvatar.isPending ? 'disabled' : ''}`}>
+                      {uploadAvatar.isPending ? '上传中...' : '上传头像'}
+                      <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden onChange={uploadProfileAvatar} disabled={uploadAvatar.isPending} />
+                    </label>
+                    <div className="tip">支持 jpg/png/webp/gif，文件不超过 5MB</div>
                   </div>
                 </div>
                 <div className="form-item">
@@ -250,7 +287,7 @@ export default function ProfilePage() {
                   <label className="form-label">简介</label>
                   <textarea className="form-textarea" value={profile.bio} onChange={(event) => setProfile((prev) => ({ ...prev, bio: event.target.value }))} maxLength={100} />
                 </div>
-                <button className="btn-primary" onClick={saveProfile} disabled={updateMe.isPending}>保存修改</button>
+                <button className="btn-primary" onClick={saveProfile} disabled={updateMe.isPending || uploadAvatar.isPending}>保存修改</button>
               </div>
             </div>
           )}
@@ -259,7 +296,35 @@ export default function ProfilePage() {
           {active === 'my-demand' && <ListCard title="我的求资源" items={userRequestsQuery.data?.items || []} loading={userRequestsQuery.isLoading} error={userRequestsQuery.error} getHref={(item: Demand) => `/demands/${item.id}`} render={(item: Demand) => item.title} meta={(item: Demand) => `悬赏：${item.points}积分 | 状态：${demandStatusLabel(item.status)} | 回复：${item.replyCount}`} action={{ label: '取消', icon: <DeleteOutlined />, onClick: removeDemand, pending: cancelDemand.isPending }} />}
           {active === 'my-fav' && <ListCard title="我的收藏" items={userFavoritesQuery.data?.items || []} loading={userFavoritesQuery.isLoading} error={userFavoritesQuery.error} getHref={(item: Resource) => `/resources/${item.id}`} render={(item: Resource) => item.title} meta={(item: Resource) => `${item.date} | ${item.type}`} action={{ label: '取消收藏', onClick: cancelFavorite, pending: resourceAction.isPending }} />}
           {active === 'my-like' && <ListCard title="我的点赞" items={userLikesQuery.data?.items || []} loading={userLikesQuery.isLoading} error={userLikesQuery.error} getHref={(item: Resource) => `/resources/${item.id}`} render={(item: Resource) => item.title} meta={(item: Resource) => `${item.date} | ${item.author}`} action={{ label: '取消点赞', onClick: cancelLike, pending: resourceAction.isPending }} />}
-          {active === 'member' && <MemberCenter points={user.points} level={user.level} expNeeded={user.expNeeded} percent={percent} />}
+          {active === 'member' && (
+            <MemberCenter
+              account={pointAccount || {
+                points: user.points,
+                frozenPoints: user.frozenPoints,
+                availablePoints: user.availablePoints,
+                level: user.level,
+                levelCode: '',
+                levelMinPoints: 0,
+                nextLevel: user.nextLevel || '',
+                nextLevelMinPoints: user.nextLevelMinPoints || 0,
+                rewardLimit: user.rewardLimit,
+                dailyDownloadLimit: user.dailyDownloadLimit || 0,
+                dailyResourcePublishLimit: user.dailyResourcePublishLimit || 0,
+                dailyRequestPublishLimit: user.dailyRequestPublishLimit || 0,
+                maxFilesPerResource: user.maxFilesPerResource || 0,
+                maxFileSizeMb: user.maxFileSizeMb || 0,
+                canApplyTop: Boolean(user.canApplyTop),
+                expNeeded: user.expNeeded,
+                progressPercent: user.progressPercent || percent,
+                benefits: user.benefits || [],
+                pointRules: user.pointRules || [],
+              }}
+              flows={pointFlowsQuery.data?.items || []}
+              percent={percent}
+              loading={pointAccountQuery.isLoading || pointFlowsQuery.isLoading}
+              error={pointAccountQuery.error || pointFlowsQuery.error}
+            />
+          )}
           {active === 'message' && <MessageCenter messages={notificationsQuery.data?.items || []} loading={notificationsQuery.isLoading} error={notificationsQuery.error} onRead={(id) => markNotificationRead.mutateAsync(id)} onReadAll={() => markAllNotificationsRead.mutateAsync()} pending={markNotificationRead.isPending || markAllNotificationsRead.isPending} />}
           {active === 'security' && (
             <>
@@ -395,28 +460,150 @@ function ListCard<T extends { id: number }>({
   );
 }
 
-function MemberCenter({ points, level, expNeeded, percent }: { points: number; level: string; expNeeded: number; percent: number }) {
+function MemberCenter({
+  account,
+  flows,
+  percent,
+  loading,
+  error,
+}: {
+  account: PointAccount;
+  flows: PointFlow[];
+  percent: number;
+  loading?: boolean;
+  error?: unknown;
+}) {
+  const benefits = account.benefits.length ? account.benefits : fallbackPointBenefits(account);
+  const pointRules = account.pointRules.length ? account.pointRules : fallbackPointRules();
+  const nextLevel = account.nextLevel || nextLevelName(account.points);
+  const nextLevelTarget = account.nextLevelMinPoints || (account.expNeeded > account.points ? account.expNeeded : account.points + account.expNeeded);
+  const remainingPoints = account.expNeeded || Math.max(0, nextLevelTarget - account.points);
+
   return (
     <div className="card">
       <div className="card-title">会员中心</div>
       <div className="card-body">
         <div className="member-current-card">
-          <div className="member-hd"><div className="member-level-name">{level}</div><div className="member-points">当前积分：{points} 分</div></div>
+          <div className="member-hd"><div className="member-level-name">{account.level}</div><div className="member-points">当前积分：{account.points} 分</div></div>
           <div className="member-progress-section">
-            <div className="progress-text"><span>距离升级：活跃会员</span><span>{points} / {expNeeded}</span></div>
+            <div className="progress-text"><span>{nextLevel ? `距离升级：${nextLevel}` : '已达最高等级'}</span><span>{account.points} / {nextLevelTarget || account.points}</span></div>
             <div className="progress-bar-bg"><div className="progress-bar-active" style={{ width: `${percent}%` }} /></div>
-            <div className="progress-tip">距离升级还差 {Math.max(0, expNeeded - points)} 积分</div>
+            <div className="progress-tip">{nextLevel ? `距离升级还差 ${remainingPoints} 积分` : '当前已经是最高会员等级'}</div>
           </div>
-          <div className="member-stats"><div><span>可用积分</span><strong>{points}</strong></div><div><span>冻结积分</span><strong>0</strong></div></div>
+          <div className="member-stats">
+            <div><span>可用积分</span><strong>{account.availablePoints}</strong></div>
+            <div><span>冻结积分</span><strong>{account.frozenPoints}</strong></div>
+            <div><span>悬赏上限</span><strong>{account.rewardLimit}</strong></div>
+          </div>
         </div>
-        <div className="member-section"><div className="member-section-title">我的当前权益</div><div className="member-benefits"><div>• 每日下载次数：10 次</div><div>• 单资源最大附件：5 个</div><div>• 单文件最大大小：100MB</div><div>• 悬赏积分上限：100 分</div><div>• 资源置顶资格：无</div></div></div>
+        {loading && <div className="tip" style={{ marginBottom: 16 }}>积分数据加载中...</div>}
+        {error ? <ApiError error={error} /> : null}
+        <div className="member-section">
+          <div className="member-section-title">我的当前权益</div>
+          <div className="member-benefits">
+            {benefits.map((benefit) => <div key={benefit.name}>{formatBenefit(benefit)}</div>)}
+          </div>
+        </div>
+        <div className="member-section">
+          <div className="member-section-title">积分明细</div>
+          <div className="point-flow-table">
+            <div className="point-flow-head"><div>时间</div><div>类型</div><div>场景</div><div>积分变化</div><div>冻结变化</div><div>余额</div></div>
+            {flows.map((flow) => (
+              <div className="point-flow-row" key={flow.id}>
+                <div>{formatPointTime(flow.createTime)}</div>
+                <div>{flowTypeLabel(flow.flowType)}</div>
+                <div>{flow.sceneLabel || sceneLabel(flow.scene)}</div>
+                <div className={flow.pointsChange >= 0 ? 'point-positive' : 'point-negative'}>{signedNumber(flow.pointsChange)}</div>
+                <div className={flow.frozenChange >= 0 ? 'point-positive' : 'point-negative'}>{signedNumber(flow.frozenChange)}</div>
+                <div>{flow.afterPoints}</div>
+                {(flow.description || flow.relatedLabel || flow.balanceText) && <div className="point-flow-desc">{[flow.description, flow.relatedLabel, flow.balanceText].filter(Boolean).join(' · ')}</div>}
+              </div>
+            ))}
+            {!flows.length && !loading && <div className="tip" style={{ padding: 12 }}>暂无积分流水</div>}
+          </div>
+        </div>
         <div className="member-section"><div className="member-section-title">会员等级规则</div><div className="member-level-table"><div className="member-level-item"><span>普通会员</span><span>0 ~ 99 积分</span></div><div className="member-level-item"><span>活跃会员</span><span>100 ~ 499 积分</span></div><div className="member-level-item"><span>优质会员</span><span>500 ~ 1999 积分</span></div><div className="member-level-item"><span>资深会员</span><span>≥2000 积分</span></div></div></div>
-        <div className="member-section"><div className="member-section-title">全等级权益对照表</div><div className="member-benefit-table"><div className="benefit-head"><div>权益项</div><div>普通会员</div><div>活跃会员</div><div>优质会员</div><div>资深会员</div></div><div className="benefit-row"><div>每日下载次数</div><div>10</div><div>20</div><div>50</div><div>100</div></div><div className="benefit-row"><div>单资源最大附件</div><div>5</div><div>8</div><div>10</div><div>15</div></div><div className="benefit-row"><div>单文件最大大小</div><div>100MB</div><div>100MB</div><div>100MB</div><div>200MB</div></div><div className="benefit-row"><div>资源置顶资格</div><div>无</div><div>无</div><div>有</div><div>有</div></div><div className="benefit-row"><div>悬赏积分上限</div><div>100</div><div>500</div><div>2000</div><div>10000</div></div></div></div>
-        <div className="member-rule-group"><div className="member-section-title">积分获取规则</div><div className="member-rule"><div>• 资源审核通过 + 积分</div><div>• 资源被他人下载 + 积分</div><div>• 资源被收藏 + 积分</div><div>• 评论被点赞 + 积分</div><div>• 求资源回答被采纳 + 奖励积分</div></div></div>
-        <div className="member-rule-group"><div className="member-section-title">积分扣减规则</div><div className="member-rule deduct"><div>• 资源违规下架 - 扣除积分</div><div>• 举报/版权投诉成立 - 扣除积分</div><div>• 评论违规删除 - 扣除积分</div><div>• 求资源违规关闭 - 扣除积分</div></div></div>
+        <div className="member-section"><div className="member-section-title">全等级权益对照表</div><div className="member-benefit-table"><div className="benefit-head"><div>权益项</div><div>普通会员</div><div>活跃会员</div><div>优质会员</div><div>资深会员</div></div><div className="benefit-row"><div>每日下载次数</div><div>10</div><div>20</div><div>50</div><div>100</div></div><div className="benefit-row"><div>每日发布资源</div><div>5</div><div>5</div><div>5</div><div>5</div></div><div className="benefit-row"><div>每日发布求资源</div><div>5</div><div>5</div><div>5</div><div>5</div></div><div className="benefit-row"><div>单资源最大附件</div><div>5</div><div>8</div><div>10</div><div>15</div></div><div className="benefit-row"><div>单文件最大大小</div><div>100MB</div><div>150MB</div><div>200MB</div><div>500MB</div></div><div className="benefit-row"><div>资源置顶资格</div><div>无</div><div>无</div><div>有</div><div>有</div></div><div className="benefit-row"><div>悬赏积分上限</div><div>100</div><div>500</div><div>2000</div><div>10000</div></div></div></div>
+        <div className="member-rule-group"><div className="member-section-title">积分规则</div><div className="member-rule">{pointRules.map((rule) => <div key={rule.key || rule.action}>• {rule.action} {rule.points}<span className="member-rule-note">{rule.note}</span></div>)}</div></div>
       </div>
     </div>
   );
+}
+
+function fallbackPointBenefits(account: PointAccount): PointBenefit[] {
+  return [
+    { name: '每日下载次数', description: '', limit: account.dailyDownloadLimit || 10, enabled: true },
+    { name: '每日发布资源', description: '', limit: account.dailyResourcePublishLimit || 5, enabled: true },
+    { name: '每日发布求资源', description: '', limit: account.dailyRequestPublishLimit || 5, enabled: true },
+    { name: '单资源附件数', description: '', limit: account.maxFilesPerResource || 5, enabled: true },
+    { name: '单附件大小', description: '', limit: account.maxFileSizeMb || 100, enabled: true },
+    { name: '单帖悬赏上限', description: '', limit: account.rewardLimit, enabled: true },
+    { name: '申请置顶', description: '', limit: account.canApplyTop ? '允许' : '不允许', enabled: account.canApplyTop },
+  ];
+}
+
+function fallbackPointRules(): PointRule[] {
+  return [
+    { key: 'point.daily_login', action: '每日登录', points: '+10', note: '同一会员每日首次登录奖励一次' },
+    { key: 'point.resource_favorited', action: '资源被收藏', points: '+5', note: '首次被他人收藏时奖励发布者' },
+    { key: 'point.resource_liked', action: '资源被点赞', points: '+3', note: '首次被他人点赞时奖励发布者' },
+    { key: 'point.resource_approved', action: '资源审核通过', points: '+10', note: '同一资源只奖励一次' },
+    { key: 'point.resource_downloaded', action: '资源被下载', points: '+5', note: '其他用户首次下载时奖励发布者，下载者不扣分' },
+    { key: 'point.request_accepted', action: '回答被采纳', points: '+10', note: '回答者除悬赏外获得平台额外奖励' },
+    { key: 'point.violation_penalty', action: '违规成立', points: '-10', note: '违规处理后扣减积分' },
+  ];
+}
+
+function formatBenefit(benefit: PointBenefit) {
+  if (benefit.name.includes('置顶') || benefit.name.includes('申请')) {
+    return `${benefit.name}：${benefit.enabled ? '有' : '无'}`;
+  }
+  const limit = String(benefit.limit || '-');
+  if (benefit.name.includes('大小') && /^\d+$/.test(limit)) return `${benefit.name}：${limit}MB`;
+  return `${benefit.name}：${limit}`;
+}
+
+function nextLevelName(points: number) {
+  if (points < 100) return '活跃会员';
+  if (points < 500) return '优质会员';
+  if (points < 2000) return '资深会员';
+  return '已达最高等级';
+}
+
+function flowTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    EARN: '获得',
+    FREEZE: '冻结',
+    UNFREEZE: '解冻',
+    TRANSFER_IN: '转入',
+    TRANSFER_OUT: '转出',
+    DEDUCT: '扣减',
+    REFUND: '退回',
+    ADJUST: '调整',
+  };
+  return labels[type] || type || '-';
+}
+
+function sceneLabel(scene: string) {
+  const labels: Record<string, string> = {
+    REGISTER: '注册',
+    REQUEST_REWARD: '求资源悬赏',
+    REQUEST_SETTLE: '采纳结算',
+    RESOURCE_APPROVED: '资源审核',
+    RESOURCE_DOWNLOADED: '资源下载',
+    MANUAL: '人工调整',
+  };
+  return labels[scene] || scene || '-';
+}
+
+function signedNumber(value: number) {
+  if (value > 0) return `+${value}`;
+  return String(value);
+}
+
+function formatPointTime(value: string) {
+  if (!value) return '-';
+  return value.replace('T', ' ').slice(0, 19);
 }
 
 function MessageCenter({

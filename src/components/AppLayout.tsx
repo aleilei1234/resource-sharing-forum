@@ -13,7 +13,7 @@ function selectedKey(pathname: string) {
 export default function AppLayout() {
   const location = useLocation();
   const { token, user, setUser } = useAuthStore();
-  const meQuery = useMe(Boolean(token));
+  const meQuery = useMe(token);
   const activeUser = user || meQuery.data;
   const active = selectedKey(location.pathname);
 

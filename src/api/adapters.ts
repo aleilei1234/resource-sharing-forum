@@ -5,6 +5,8 @@ import type {
   NotificationMessage,
   LoginLog,
   PagedResult,
+  PointBenefit,
+  PointRule,
   ProfileSummary,
   Resource,
   ResourceAttachment,
@@ -13,6 +15,7 @@ import type {
   Comment,
   Demand,
 } from '../types';
+import { apiHostURL } from './client';
 
 type RawRecord = Record<string, unknown>;
 
@@ -47,9 +50,23 @@ export function mapUser(value: unknown): User {
     emailVerified: bool(raw.emailVerified, true),
     bio: text(raw.bio),
     contact: text(first(raw.contact, raw.email)),
-    avatar: text(raw.avatar),
+    avatar: backendMediaUrl(first(raw.avatar, raw.avatarUrl)),
     level: text(raw.level, 'Member'),
     points,
+    frozenPoints: number(raw.frozenPoints),
+    availablePoints: number(raw.availablePoints, points),
+    rewardLimit: number(raw.rewardLimit, 100),
+    dailyDownloadLimit: number(raw.dailyDownloadLimit),
+    dailyResourcePublishLimit: number(raw.dailyResourcePublishLimit),
+    dailyRequestPublishLimit: number(raw.dailyRequestPublishLimit),
+    maxFilesPerResource: number(raw.maxFilesPerResource),
+    maxFileSizeMb: number(raw.maxFileSizeMb),
+    canApplyTop: bool(raw.canApplyTop, false),
+    nextLevel: text(raw.nextLevel),
+    nextLevelMinPoints: number(raw.nextLevelMinPoints),
+    progressPercent: number(first(raw.progressPercent, raw.upgradeProgress)),
+    benefits: array(raw.benefits).map(mapPointBenefit),
+    pointRules: array(first(raw.pointRules, raw.rules)).map(mapPointRule),
     expNeeded,
     passwordUpdatedAt: text(first(raw.passwordUpdatedAt, raw.passwordChangedAt), today()),
   };
@@ -57,8 +74,9 @@ export function mapUser(value: unknown): User {
 
 export function mapResource(value: unknown): Resource {
   const raw = asRecord(value);
-  const attachments = array(raw.attachments).map(mapAttachment);
-  const fallbackAttachment = attachmentFromResource(raw);
+  const attachments = array(raw.attachments).map(mapAttachment).filter((attachment) => !isPlaceholderAttachment(attachment));
+  const rawFallbackAttachment = attachmentFromResource(raw);
+  const fallbackAttachment = rawFallbackAttachment && !isPlaceholderAttachment(rawFallbackAttachment) ? rawFallbackAttachment : null;
   const safeAttachments = attachments.length ? attachments : fallbackAttachment ? [fallbackAttachment] : [];
 
   return {
@@ -124,6 +142,7 @@ export function mapComment(value: unknown): Comment {
     date: text(first(raw.date, raw.createdAt, raw.createTime), today()),
     mine: bool(raw.mine, false),
     accepted: bool(raw.accepted, false),
+    attachments: array(raw.attachments).map(mapAttachment).filter((attachment) => !isPlaceholderAttachment(attachment)),
     replyToAuthor: text(first(raw.replyToAuthor, raw.replyTo, raw.parentAuthor)),
     replies: array(raw.replies).map(mapComment),
   };
@@ -260,6 +279,27 @@ function mapResourceTypeOption(value: unknown): ResourceTypeOption {
   };
 }
 
+function mapPointBenefit(value: unknown): PointBenefit {
+  const raw = asRecord(value);
+  const limit = first(raw.limit, raw.value);
+  return {
+    name: text(raw.name),
+    description: text(raw.description),
+    limit: typeof limit === 'number' ? limit : text(limit),
+    enabled: bool(raw.enabled, true),
+  };
+}
+
+function mapPointRule(value: unknown): PointRule {
+  const raw = asRecord(value);
+  return {
+    key: text(raw.key),
+    action: text(first(raw.action, raw.name)),
+    points: text(raw.points),
+    note: text(first(raw.note, raw.description)),
+  };
+}
+
 function mapAnnouncement(value: unknown): Announcement {
   const raw = asRecord(value);
   return {
@@ -278,6 +318,7 @@ function mapAttachment(value: unknown): ResourceAttachment {
     size: sizeText(first(raw.size, raw.fileSize)),
     type: text(first(raw.type, raw.fileType, raw.fileExt), '\u6587\u4ef6'),
     downloads: number(first(raw.downloads, raw.downloadCount)),
+    downloadUrl: text(raw.downloadUrl),
   };
 }
 
@@ -293,9 +334,22 @@ function attachmentFromResource(raw: RawRecord): ResourceAttachment | null {
   };
 }
 
+function isPlaceholderAttachment(attachment: ResourceAttachment) {
+  const name = attachment.name.toLowerCase();
+  const pendingSize = attachment.size === '\u5f85\u5904\u7406' || attachment.size === 'pending';
+  return pendingSize && (name === 'uploaded-file.zip' || name === 'resource-file.zip');
+}
+
 function resourceTypeLabel(value: unknown) {
   const raw = text(value, 'DOCUMENT');
   return typeLabels[raw] || typeLabels[raw.toUpperCase()] || raw;
+}
+
+function backendMediaUrl(value: unknown) {
+  const url = text(value);
+  if (!url) return '';
+  if (/^(https?:|data:|blob:)/i.test(url)) return url;
+  return new URL(url, apiHostURL).toString();
 }
 
 function mapAuthor(value: unknown) {

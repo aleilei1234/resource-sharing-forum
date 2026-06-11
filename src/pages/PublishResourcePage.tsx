@@ -1,13 +1,15 @@
 import { message } from 'antd';
 import { type ChangeEvent, type FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useCategories, usePublishResource, useResourceTypes } from '../api/hooks';
+import { useCategories, usePublishResource, useResourceTypes, useSubmitResource, useUploadAttachment } from '../api/hooks';
 import { InlineApiError } from '../components/ApiState';
 import { resourcePublishSchema } from '../utils/validation';
 
 export default function PublishResourcePage() {
   const navigate = useNavigate();
   const publish = usePublishResource();
+  const uploadAttachment = useUploadAttachment();
+  const submitResource = useSubmitResource();
   const categoriesQuery = useCategories();
   const resourceTypesQuery = useResourceTypes();
   const [files, setFiles] = useState<File[]>([]);
@@ -25,6 +27,7 @@ export default function PublishResourcePage() {
   const resourceTypes = resourceTypesQuery.data || [];
   const selectedCategory = categories.find((item) => item.id === values.category1);
   const tags = values.tags.split(/[,，\s]+/).filter(Boolean).slice(0, 5);
+  const submitting = publish.isPending || uploadAttachment.isPending || submitResource.isPending;
 
   const update = (key: keyof typeof values, value: string) => setValues((prev) => ({ ...prev, [key]: value }));
 
@@ -43,16 +46,25 @@ export default function PublishResourcePage() {
       message.error(errorMessage);
       return;
     }
+    if (files.length === 0) {
+      const errorMessage = '请至少上传一个附件';
+      setFeedback({ type: 'error', text: errorMessage });
+      message.error(errorMessage);
+      return;
+    }
     const formData = new FormData();
     Object.entries(parsed.data).forEach(([key, value]) => {
       formData.append(key, Array.isArray(value) ? value.join(',') : String(value));
     });
     formData.append('categoryId', parsed.data.category2);
     formData.append('resourceType', parsed.data.type);
-    formData.append('fileName', files[0]?.name || 'resource-file.zip');
-    files.forEach((file) => formData.append('files', file));
+    formData.append('draft', 'true');
     try {
       const resource = await publish.mutateAsync(formData);
+      for (const file of files) {
+        await uploadAttachment.mutateAsync({ file, resourceId: resource.id });
+      }
+      await submitResource.mutateAsync(resource.id);
       setFeedback({ type: 'success', text: `资源“${resource.title}”已提交审核，可在个人中心查看审核状态。` });
       message.success('资源已提交审核');
       window.setTimeout(() => navigate('/profile?tab=my-resource'), 700);
@@ -166,8 +178,8 @@ export default function PublishResourcePage() {
               <button className="btn-cancel" type="button" onClick={() => navigate(-1)}>
                 取消
               </button>
-              <button className="btn-submit" type="submit" disabled={publish.isPending}>
-                {publish.isPending ? '提交中...' : '提交审核'}
+              <button className="btn-submit" type="submit" disabled={submitting}>
+                {submitting ? '提交中...' : '提交审核'}
               </button>
             </div>
             {feedback && <div className={`form-feedback ${feedback.type}`}>{feedback.text}</div>}

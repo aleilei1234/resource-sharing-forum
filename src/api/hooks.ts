@@ -2,12 +2,20 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as endpoints from './endpoints';
 import type { Comment, ListParams, User } from '../types';
 
-export function useMe(enabled = true) {
-  return useQuery({ queryKey: ['me'], queryFn: endpoints.getMe, enabled });
+export function useMe(token?: string | null) {
+  return useQuery({ queryKey: ['me', token], queryFn: endpoints.getMe, enabled: Boolean(token) });
 }
 
 export function useProfileSummary() {
   return useQuery({ queryKey: ['profile-summary'], queryFn: endpoints.getProfileSummary });
+}
+
+export function usePointAccount(enabled = true) {
+  return useQuery({ queryKey: ['point-account'], queryFn: endpoints.getPointAccount, enabled });
+}
+
+export function usePointFlows(enabled = true) {
+  return useQuery({ queryKey: ['point-flows'], queryFn: () => endpoints.getPointFlows({ page: 1, pageSize: 10 }), enabled });
 }
 
 export function useUpdateMe() {
@@ -15,7 +23,18 @@ export function useUpdateMe() {
   return useMutation({
     mutationFn: (values: Partial<User>) => endpoints.updateMe(values),
     onSuccess: (user) => {
-      queryClient.setQueryData(['me'], user);
+      queryClient.setQueriesData({ queryKey: ['me'] }, user);
+      queryClient.invalidateQueries({ queryKey: ['profile-summary'] });
+    },
+  });
+}
+
+export function useUploadAvatar() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: endpoints.uploadAvatar,
+    onSuccess: ({ avatar }) => {
+      queryClient.setQueriesData<User | undefined>({ queryKey: ['me'] }, (current) => (current ? { ...current, avatar } : current));
       queryClient.invalidateQueries({ queryKey: ['profile-summary'] });
     },
   });
@@ -30,7 +49,7 @@ export function useBindEmail() {
   return useMutation({
     mutationFn: endpoints.bindEmail,
     onSuccess: (user) => {
-      queryClient.setQueryData(['me'], user);
+      queryClient.setQueriesData({ queryKey: ['me'] }, user);
       queryClient.invalidateQueries({ queryKey: ['profile-summary'] });
     },
   });
@@ -68,6 +87,24 @@ export function usePublishResource() {
   });
 }
 
+export function useUploadAttachment() {
+  return useMutation({
+    mutationFn: ({ file, resourceId }: { file: File; resourceId: number }) => endpoints.uploadAttachment(file, resourceId),
+  });
+}
+
+export function useSubmitResource() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => endpoints.submitResource(id),
+    onSuccess: (resource) => {
+      queryClient.invalidateQueries({ queryKey: ['resources'] });
+      queryClient.invalidateQueries({ queryKey: ['user-resources'] });
+      queryClient.invalidateQueries({ queryKey: ['resource', String(resource.id)] });
+    },
+  });
+}
+
 export function useResourceAction() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -85,6 +122,10 @@ export function useResourceAction() {
 
 export function useDownloadAttachment() {
   return useMutation({ mutationFn: (attachmentId: number) => endpoints.downloadAttachmentFile(attachmentId) });
+}
+
+export function useDownloadFileFromUrl() {
+  return useMutation({ mutationFn: ({ downloadUrl, fileName }: { downloadUrl: string; fileName?: string }) => endpoints.downloadFileFromUrl(downloadUrl, fileName) });
 }
 
 export function useRateResource() {
@@ -130,10 +171,23 @@ export function useCancelDemand() {
   });
 }
 
+export function useAcceptDemandAnswer(demandId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (answerId: number) => endpoints.acceptDemandAnswer(demandId, answerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['demand', String(demandId)] });
+      queryClient.invalidateQueries({ queryKey: ['demands'] });
+      queryClient.invalidateQueries({ queryKey: ['user-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['profile-summary'] });
+    },
+  });
+}
+
 export function useAddComment(kind: 'resources' | 'demands', id: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (values: { content: string; parentId?: number; resourceId?: number; externalUrl?: string }) => endpoints.addComment(kind, id, values),
+    mutationFn: (values: { content: string; parentId?: number; resourceId?: number; externalUrl?: string; files?: File[] }) => endpoints.addComment(kind, id, values),
     onSuccess: (comment, values) => {
       const detailKey = [kind === 'resources' ? 'resource' : 'demand', String(id)];
       queryClient.setQueryData<{ comments: Comment[] }>(detailKey, (current) => {

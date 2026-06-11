@@ -25,6 +25,10 @@ import type {
   LoginLog,
   NotificationMessage,
   PagedResult,
+  PointAccount,
+  PointBenefit,
+  PointFlow,
+  PointRule,
   ProfileSummary,
   ReportTarget,
   Resource,
@@ -37,7 +41,24 @@ type AuthPayload = {
   user?: unknown;
 };
 
+type CodePayload = {
+  ok?: boolean;
+  email?: string;
+  expiresInMinutes?: number;
+  devCode?: string;
+};
+
+export type AttachmentView = {
+  id: number;
+  resourceId: number;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  status: string;
+};
+
 export const userCenterBasePath = usesV1Api ? '/user' : '/v1/user';
+export const attachmentBasePath = usesV1Api ? '/attachments' : '/v1/attachments';
 
 export async function login(values: { account: string; password: string }) {
   const { data } = await apiClient.post<AuthPayload>('/auth/login', { ...values, rememberMe: true });
@@ -47,11 +68,23 @@ export async function login(values: { account: string; password: string }) {
   };
 }
 
-export async function register(values: { username: string; email: string; password: string }) {
+export async function register(values: { username: string; email: string; password: string; code: string }) {
   const { data } = await apiClient.post<AuthPayload>('/auth/register', values);
   return {
     token: data.token || '',
     user: mapUser(data.user),
+  };
+}
+
+export async function sendRegisterCode(values: { email: string }) {
+  const { data } = await apiClient.post<CodePayload>('/auth/register/code', {
+    email: values.email,
+  });
+  return {
+    ok: data?.ok !== false,
+    email: data?.email || values.email,
+    expiresInMinutes: data?.expiresInMinutes || 10,
+    devCode: data?.devCode,
   };
 }
 
@@ -68,11 +101,16 @@ export async function resetPassword(values: { email: string; code: string; passw
 }
 
 export async function sendResetPasswordCode(values: { email: string }) {
-  const { data } = await apiClient.post<{ ok?: boolean; devCode?: string }>('/auth/reset-password/code', {
+  const { data } = await apiClient.post<CodePayload>('/auth/reset-password/code', {
     account: values.email,
     email: values.email,
   });
-  return { ok: data?.ok !== false, devCode: data?.devCode };
+  return {
+    ok: data?.ok !== false,
+    email: data?.email || values.email,
+    expiresInMinutes: data?.expiresInMinutes || 10,
+    devCode: data?.devCode,
+  };
 }
 
 export async function getMe(): Promise<User> {
@@ -83,6 +121,16 @@ export async function getMe(): Promise<User> {
 export async function updateMe(values: Partial<User>): Promise<User> {
   const { data } = await apiClient.put<unknown>(profileBasePath, values);
   return mapUser(data);
+}
+
+export async function uploadAvatar(file: File): Promise<{ avatar: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await apiClient.post<{ avatar?: string; avatarUrl?: string }>('/me/avatar', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  const avatar = data.avatarUrl || data.avatar || '';
+  return { avatar: avatar ? absoluteDownloadUrl(avatar) : '' };
 }
 
 export async function changePassword(values: { oldPassword: string; newPassword: string }) {
@@ -111,6 +159,18 @@ export async function getProfileSummary(): Promise<ProfileSummary> {
   return mapProfileSummary(data);
 }
 
+export async function getPointAccount(): Promise<PointAccount> {
+  const { data } = await apiClient.get<unknown>(`${userCenterBasePath}/points`);
+  return mapPointAccount(data);
+}
+
+export async function getPointFlows(params: { page?: number; pageSize?: number } = {}): Promise<PagedResult<PointFlow>> {
+  const { data } = await apiClient.get<unknown>(`${userCenterBasePath}/points/flows`, {
+    params: { page: params.page || 1, size: params.pageSize || 10 },
+  });
+  return mapPaged(data, mapPointFlow);
+}
+
 export async function getResources(params: ListParams): Promise<PagedResult<Resource>> {
   const { data } = await apiClient.get<unknown>('/resources', { params: toBackendListParams(params) });
   return mapPaged(data, mapResource);
@@ -128,6 +188,22 @@ export async function publishResource(formData: FormData): Promise<Resource> {
   return mapResource(data);
 }
 
+export async function uploadAttachment(file: File, resourceId: number): Promise<AttachmentView> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('resourceId', String(resourceId));
+
+  const { data } = await apiClient.post<unknown>(`${attachmentBasePath}/upload`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return mapAttachmentView(data);
+}
+
+export async function submitResource(id: number): Promise<Resource> {
+  const { data } = await apiClient.post<unknown>(`/resources/${id}/submit`);
+  return mapResource(data);
+}
+
 export async function toggleResourceAction(id: number, action: 'like' | 'favorite' | 'download', attachmentId?: number): Promise<Resource> {
   if (action === 'download') {
     await apiClient.post(`/resources/${id}/download`, { attachmentId });
@@ -139,7 +215,7 @@ export async function toggleResourceAction(id: number, action: 'like' | 'favorit
 }
 
 export async function downloadAttachment(attachmentId: number): Promise<DownloadInfo> {
-  const downloadPath = usesV1Api ? `/attachments/${attachmentId}/download` : `/files/${attachmentId}/download`;
+  const downloadPath = `${attachmentBasePath}/${attachmentId}/download`;
   const { data } = await apiClient.get<unknown>(downloadPath);
   return mapDownloadInfo(data);
 }
@@ -150,7 +226,11 @@ export async function downloadAttachmentFile(attachmentId: number): Promise<{ fi
     throw new Error('后端未返回附件下载地址');
   }
 
-  const downloadPath = toApiClientDownloadPath(info.downloadUrl);
+  return downloadFileFromUrl(info.downloadUrl, info.fileName || `attachment-${attachmentId}`);
+}
+
+export async function downloadFileFromUrl(downloadUrl: string, fallbackFileName = 'attachment'): Promise<{ fileName: string; blob: Blob }> {
+  const downloadPath = toApiClientDownloadPath(downloadUrl);
   const { data, headers, status } = await apiClient.get<Blob>(downloadPath, {
     responseType: 'blob',
     validateStatus: () => true,
@@ -167,7 +247,7 @@ export async function downloadAttachmentFile(attachmentId: number): Promise<{ fi
   }
 
   return {
-    fileName: contentDispositionFileName(headers['content-disposition']) || info.fileName || `attachment-${attachmentId}`,
+    fileName: contentDispositionFileName(headers['content-disposition']) || fallbackFileName,
     blob: data,
   };
 }
@@ -207,12 +287,29 @@ export async function cancelDemand(id: number) {
   return { ok: data?.ok !== false };
 }
 
+export async function acceptDemandAnswer(demandId: number, answerId: number): Promise<Demand> {
+  const { data } = await apiClient.post<unknown>(`/requests/${demandId}/answers/${answerId}/accept`);
+  return mapDemand(data);
+}
+
 export async function addComment(
   kind: 'resources' | 'demands',
   id: number,
-  values: { content: string; parentId?: number; resourceId?: number; externalUrl?: string },
+  values: { content: string; parentId?: number; resourceId?: number; externalUrl?: string; files?: File[] },
 ): Promise<Comment> {
   if (kind === 'demands' && !values.parentId) {
+    if (values.files?.length) {
+      const formData = new FormData();
+      formData.append('content', values.content);
+      if (values.resourceId) formData.append('resourceId', String(values.resourceId));
+      if (values.externalUrl) formData.append('externalUrl', values.externalUrl);
+      values.files.forEach((file) => formData.append('files', file));
+      const { data } = await apiClient.post<unknown>(`/requests/${id}/replies`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return mapComment(data);
+    }
+
     const { data } = await apiClient.post<unknown>(`/requests/${id}/replies`, {
       content: values.content,
       resourceId: values.resourceId,
@@ -343,6 +440,96 @@ function toBackendListParams(params: ListParams) {
     status: toRequestStatus(params.status),
     sort: params.sort,
   };
+}
+
+function mapAttachmentView(value: unknown): AttachmentView {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return {
+    id: Number(raw.id) || 0,
+    resourceId: Number(raw.resourceId) || 0,
+    fileName: String(raw.fileName || ''),
+    fileType: String(raw.fileType || ''),
+    fileSize: Number(raw.fileSize) || 0,
+    status: String(raw.status || ''),
+  };
+}
+
+function mapPointAccount(value: unknown): PointAccount {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  const points = Number(raw.points) || 0;
+  const frozenPoints = Number(raw.frozenPoints) || 0;
+  const nextLevelMinPoints = Number(raw.nextLevelMinPoints) || 0;
+  const expNeeded = Number(raw.expNeeded) || (nextLevelMinPoints > points ? nextLevelMinPoints - points : 0);
+  const progressPercent = Number(raw.progressPercent ?? raw.upgradeProgress) || (nextLevelMinPoints > 0 ? Math.min(100, Math.round((points / nextLevelMinPoints) * 100)) : 100);
+  return {
+    points,
+    frozenPoints,
+    availablePoints: Number(raw.availablePoints) || Math.max(0, points - frozenPoints),
+    level: String(raw.level || 'Member'),
+    levelCode: String(raw.levelCode || ''),
+    levelMinPoints: Number(raw.levelMinPoints) || 0,
+    levelMaxPoints: raw.levelMaxPoints == null ? undefined : Number(raw.levelMaxPoints) || 0,
+    nextLevel: String(raw.nextLevel || ''),
+    nextLevelMinPoints,
+    rewardLimit: Number(raw.rewardLimit) || 100,
+    dailyDownloadLimit: Number(raw.dailyDownloadLimit) || 0,
+    dailyResourcePublishLimit: Number(raw.dailyResourcePublishLimit) || 0,
+    dailyRequestPublishLimit: Number(raw.dailyRequestPublishLimit) || 0,
+    maxFilesPerResource: Number(raw.maxFilesPerResource) || 0,
+    maxFileSizeMb: Number(raw.maxFileSizeMb) || 0,
+    canApplyTop: Boolean(raw.canApplyTop),
+    expNeeded,
+    progressPercent,
+    benefits: toArray(raw.benefits).map(mapPointBenefit),
+    pointRules: toArray(raw.pointRules || raw.rules).map(mapPointRule),
+  };
+}
+
+function mapPointFlow(value: unknown): PointFlow {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return {
+    id: Number(raw.id) || 0,
+    flowType: String(raw.flowType || ''),
+    scene: String(raw.scene || ''),
+    pointsChange: Number(raw.pointsChange) || 0,
+    frozenChange: Number(raw.frozenChange) || 0,
+    beforePoints: Number(raw.beforePoints) || 0,
+    afterPoints: Number(raw.afterPoints) || 0,
+    beforeFrozenPoints: Number(raw.beforeFrozenPoints) || 0,
+    afterFrozenPoints: Number(raw.afterFrozenPoints) || 0,
+    relatedType: String(raw.relatedType || ''),
+    relatedId: Number(raw.relatedId) || 0,
+    description: String(raw.description || ''),
+    createTime: String(raw.createTime || ''),
+    sceneLabel: String(raw.sceneLabel || ''),
+    relatedLabel: String(raw.relatedLabel || ''),
+    balanceText: String(raw.balanceText || ''),
+  };
+}
+
+function mapPointBenefit(value: unknown): PointBenefit {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  const limit = raw.limit ?? raw.value ?? '';
+  return {
+    name: String(raw.name || ''),
+    description: String(raw.description || ''),
+    limit: typeof limit === 'number' ? limit : String(limit),
+    enabled: raw.enabled !== false,
+  };
+}
+
+function mapPointRule(value: unknown): PointRule {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return {
+    key: String(raw.key || ''),
+    action: String(raw.action || raw.name || ''),
+    points: String(raw.points || ''),
+    note: String(raw.note || raw.description || ''),
+  };
+}
+
+function toArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
 }
 
 function toApiClientDownloadPath(downloadUrl: string) {

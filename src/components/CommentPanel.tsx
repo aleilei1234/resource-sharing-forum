@@ -1,7 +1,7 @@
 import { message } from 'antd';
 import { type ChangeEvent, useState } from 'react';
-import { useAddComment, useDeleteComment } from '../api/hooks';
-import type { Comment } from '../types';
+import { useAddComment, useDeleteComment, useDownloadAttachment, useDownloadFileFromUrl } from '../api/hooks';
+import type { Comment, ResourceAttachment } from '../types';
 import ReportModal from './ReportModal';
 
 type Props = {
@@ -11,6 +11,9 @@ type Props = {
   title?: string;
   ownerName?: string;
   disabledMessage?: string;
+  canAcceptAnswer?: boolean;
+  acceptingAnswerId?: number | null;
+  onAcceptAnswer?: (comment: Comment) => Promise<unknown> | unknown;
 };
 
 type ReportState = {
@@ -18,7 +21,7 @@ type ReportState = {
   title: string;
 };
 
-export default function CommentPanel({ kind, id, comments, title, ownerName, disabledMessage }: Props) {
+export default function CommentPanel({ kind, id, comments, title, ownerName, disabledMessage, canAcceptAnswer, acceptingAnswerId, onAcceptAnswer }: Props) {
   const [content, setContent] = useState('');
   const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
   const [replyContent, setReplyContent] = useState('');
@@ -28,6 +31,8 @@ export default function CommentPanel({ kind, id, comments, title, ownerName, dis
   const [reportTarget, setReportTarget] = useState<ReportState | null>(null);
   const addComment = useAddComment(kind, id);
   const deleteComment = useDeleteComment(kind, id);
+  const downloadAttachment = useDownloadAttachment();
+  const downloadFileFromUrl = useDownloadFileFromUrl();
   const isResource = kind === 'resources';
 
   async function submit() {
@@ -49,14 +54,12 @@ export default function CommentPanel({ kind, id, comments, title, ownerName, dis
       message.warning('请输入回答内容、资源链接或选择附件');
       return;
     }
-    if (!isResource && answerFiles.length) {
-      const text = '当前后端回答接口暂不支持保存回答附件。请先填写回答内容或资源链接提交；附件保存需求已记录到后端待解决文档。';
-      setFeedback({ type: 'error', text });
-      message.error(text);
-      return;
-    }
     try {
-      await addComment.mutateAsync({ content: trimmedContent, externalUrl: isResource ? undefined : trimmedUrl || undefined });
+      await addComment.mutateAsync({
+        content: trimmedContent,
+        externalUrl: isResource ? undefined : trimmedUrl || undefined,
+        files: isResource ? undefined : answerFiles,
+      });
       setContent('');
       setExternalUrl('');
       setAnswerFiles([]);
@@ -66,6 +69,28 @@ export default function CommentPanel({ kind, id, comments, title, ownerName, dis
       const errorMessage = error instanceof Error ? error.message : '接口调用失败';
       setFeedback({ type: 'error', text: errorMessage });
       message.error(errorMessage);
+    }
+  }
+
+  async function acceptAnswer(comment: Comment) {
+    if (!onAcceptAnswer) return;
+    try {
+      await onAcceptAnswer(comment);
+      message.success('已采纳回答');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '接口调用失败');
+    }
+  }
+
+  async function downloadAnswerAttachment(attachment: ResourceAttachment) {
+    try {
+      const file = attachment.downloadUrl
+        ? await downloadFileFromUrl.mutateAsync({ downloadUrl: attachment.downloadUrl, fileName: attachment.name })
+        : await downloadAttachment.mutateAsync(attachment.id);
+      saveBlob(file.blob, file.fileName || attachment.name);
+      message.success(`正在下载：${file.fileName || attachment.name}`);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '附件下载失败');
     }
   }
 
@@ -180,6 +205,11 @@ export default function CommentPanel({ kind, id, comments, title, ownerName, dis
                 <button className="comment-report" onClick={() => reportComment(item)}>
                   举报
                 </button>
+                {!isResource && canAcceptAnswer && !item.accepted && !isOwner(item.author) && (
+                  <button className="comment-accept" onClick={() => acceptAnswer(item)} disabled={acceptingAnswerId === item.id}>
+                    {acceptingAnswerId === item.id ? '采纳中...' : '采纳回答'}
+                  </button>
+                )}
               </div>
 
               <div className="comment-user">
@@ -196,6 +226,21 @@ export default function CommentPanel({ kind, id, comments, title, ownerName, dis
                 </a>
               )}
               {item.resourceId ? <div className="tip comment-resource-link">关联资源 #{item.resourceId}</div> : null}
+              {item.attachments?.length ? (
+                <div className="comment-attachments">
+                  {item.attachments.map((attachment) => (
+                    <div className="attach-item" key={attachment.id}>
+                      <div className="attach-info">
+                        <div className="attach-name">{attachment.name}</div>
+                        <div className="attach-size">{attachment.size}</div>
+                      </div>
+                      <button className="download-btn" type="button" onClick={() => downloadAnswerAttachment(attachment)} disabled={downloadAttachment.isPending || downloadFileFromUrl.isPending}>
+                        下载
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
 
               {replyingTo?.id === item.id && (
                 <div className="reply-editor">
@@ -260,4 +305,15 @@ export default function CommentPanel({ kind, id, comments, title, ownerName, dis
 function formatFileSize(size: number) {
   if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))}KB`;
   return `${(size / 1024 / 1024).toFixed(1)}MB`;
+}
+
+function saveBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName || 'attachment';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
