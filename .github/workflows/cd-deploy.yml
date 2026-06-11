@@ -32,10 +32,14 @@ jobs:
 
       - name: Deploy on server
         run: |
-          cd "${{ secrets.SERVER_DEPLOY_PATH }}"
+          $path = "${{ secrets.SERVER_DEPLOY_PATH }}"
+          $shortPath = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($path).ShortPath
+          Push-Location -LiteralPath $shortPath
           docker compose down
           docker compose pull
           docker compose up -d
+          Pop-Location
+        shell: powershell
 
       - name: Health check
         run: |
